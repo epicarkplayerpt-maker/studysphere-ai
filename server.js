@@ -1,4 +1,4 @@
-// server.js - StudySphere Backend using Gemini API with model fallback + Google ID token auth + Postgres logging
+// server.js - StudySphere Backend using Gemini API with model fallback + Google ID token auth + Postgres logging + file upload
 
 require('dotenv').config();
 const express = require('express');
@@ -30,8 +30,6 @@ const pool = new Pool({
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Multer setup for file uploads
@@ -44,11 +42,13 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 
 // Model priority list: best -> worst for Gemini
+// The last model is an emergency backup only.
 const GEMINI_MODEL_FALLBACKS = [
   'gemini-3.5-flash',
   'gemini-3.1-pro',
   'gemini-3.1-flash',
-  'gemini-3.1-flash-lite'
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash' // emergency only, used if everything else fails
 ];
 
 // =========================
@@ -78,6 +78,7 @@ async function callGeminiWithFallback(contents) {
   const errors = [];
 
   for (const model of GEMINI_MODEL_FALLBACKS) {
+    const isEmergency = model === 'gemini-2.5-flash';
     try {
       const response = await callGeminiModelOnce(model, contents);
 
@@ -87,10 +88,12 @@ async function callGeminiWithFallback(contents) {
 
         errors.push({ model, status: response.status, body: errorText });
 
+        // If auth fails, no point trying further models; break hard
         if (response.status === 401) {
           throw new Error(`Gemini authentication failed with model ${model}.`);
         }
 
+        // Non-OK response: try next model in chain
         continue;
       }
 
@@ -105,13 +108,18 @@ async function callGeminiWithFallback(contents) {
       const usage = data.usage || null;
 
       console.log(
-        `[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokens ?? 'N/A'}`
+        `[Chat] Provider: Gemini, Model: ${model}, Emergency: ${isEmergency}, Tokens: ${usage?.totalTokens ?? 'N/A'}`
       );
 
       return { reply, model, usage };
     } catch (err) {
       console.error(`Gemini network/parse error with model ${model}:`, err);
       errors.push({ model, error: err.message });
+
+      // If this was the emergency model and it failed, we stop.
+      if (isEmergency) break;
+
+      // Otherwise, try the next model in the chain.
       continue;
     }
   }
@@ -161,14 +169,12 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         const pdfData = await pdfParse(dataBuffer);
         extractedText = pdfData.text;
       } else if (
-        mimeType ===
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         originalName.endsWith('.docx')
       ) {
         const result = await mammoth.extractRawText({ path: filePath });
         extractedText = result.value;
       } else {
-        // Clean up unsupported file
         fs.unlinkSync(filePath);
         return res.status(400).json({
           error:
@@ -176,7 +182,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         });
       }
 
-      // Clean up file
       fs.unlinkSync(filePath);
 
       if (!extractedText || extractedText.trim().length === 0) {
@@ -203,9 +208,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 // =========================
 // Google ID token auth
 // =========================
-// Frontend sends: { idToken: "..." } from Google Identity Services.
-// We verify it against Google's tokeninfo endpoint and return { user }.
-// We also upsert into the Postgres users table.
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
@@ -230,7 +232,6 @@ app.post('/api/auth/google', async (req, res) => {
 
     const payload = await verifyRes.json();
 
-    // Check audience matches our client id
     if (payload.aud !== GOOGLE_CLIENT_ID) {
       console.error(
         'Google ID token aud mismatch:',
@@ -248,7 +249,6 @@ app.post('/api/auth/google', async (req, res) => {
 
     const user = { sub: googleId, email, name, picture };
 
-    // Upsert into users table (hardened)
     try {
       const upsertUserQuery = `
         INSERT INTO users (google_id, email, name, picture_url)
