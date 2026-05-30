@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudySphere | AI Study Workspace</title>
+  <meta name="description" content="Your AI-powered study companion for notes, flashcards, editing, translation, and brainstorming.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* =========================================
+       1. THEME VARIABLES & TRANSITIONS
+       ========================================= */
+    :root {
+      --bg: #F8FAFC;
+      --bg-alt: #FFFFFF;
+      --bg-tertiary: #F1F5F9;
+      --bg-hover: #E2E8F0;
+      --text: #0F172A;
+      --text-secondary: #475569;
+      --text-muted: #94A3B8;
+      --border: #E2E8F0;
+      --border-focus: #CBD5E1;
+      --accent: #4F46E5;
+      --accent-hover: #4338CA;
+      --accent-light: #EEF2FF;
+      --accent-text: #FFFFFF;
+      --success: #10B981;
+      --error: #EF4444;
+      --warning: #F59E0B;
+      
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --radius-full: 9999px;
+      
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0B1120;
+      --bg-alt: #151D2F;
+      --bg-tertiary: #1E293B;
+      --bg-hover: #334155;
+      --text: #F8FAFC;
+      --text-secondary: #CBD5E1;
+      --text-muted: #64748B;
+      --border: #2A354C;
+      --border-focus: #475569;
+      --accent: #818CF8;
+      --accent-hover: #A5B4FC;
+      --accent-light: #1E1B4B;
+      --accent-text: #FFFFFF;
+      --success: #34D399;
+      --error: #F87171;
+      --warning: #FBBF24;
+      
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+      --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6);
+    }
+
+    /* =========================================
+       2. RESET & BASE STYLES
+       ========================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      transition: background-color var(--transition-slow), color var(--transition-slow);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    img, svg { display: block; max-width: 100%; }
+    button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+    a { color: var(--accent); text-decoration: none; transition: color var(--transition-fast); }
+    a:hover { color: var(--accent-hover); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+    /* =========================================
+       3. HEADER & NAVIGATION
+       ========================================= */
+    header {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      background: rgba(248, 250, 252, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 100;
+      transition: background var(--transition-slow), border-color var(--transition-slow);
+    }
+    [data-theme="dark"] header { background: rgba(11, 17, 32, 0.85); }
+
+    .brand { display: flex; align-items: center; gap: 0.75rem; }
+    .brand-logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      border-radius: var(--radius-md);
+      display: grid; place-items: center;
+      color: white; font-weight: 800; font-size: 1rem;
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+      transition: transform var(--transition-base);
+    }
+    .brand-logo:hover { transform: rotate(-5deg) scale(1.05); }
+    .brand-text h1 { font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; line-height: 1.1; }
+    .brand-text span { color: var(--accent); }
+
+    .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+    .icon-btn {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border);
+      background: var(--bg-alt);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: grid; place-items: center;
+      transition: all var(--transition-base);
+    }
+    .icon-btn:hover {
+      background: var(--bg-tertiary);
+      border-color: var(--border-focus);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      color: var(--accent);
+    }
+    .icon-btn svg { width: 20px; height: 20px; stroke-width: 2; }
+    [data-theme="light"] .icon-moon { display: none; }
+    [data-theme="dark"] .icon-sun { display: none; }
+
+    /* =========================================
+       4. HERO SECTION
+       ========================================= */
+    .hero {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 3rem 2rem 2rem;
+      text-align: center;
+      animation: fadeInUp 0.6s ease-out;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; margin-bottom: 1rem; letter-spacing: -0.03em; line-height: 1.1; }
+    .hero h1 span { color: var(--accent); }
+    .hero p { font-size: 1.1rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto; }
+
+    /* =========================================
+       5. WORKSPACE LAYOUT
+       ========================================= */
+    .workspace {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 2rem 4rem;
+      width: 100%;
+      flex: 1;
+    }
+
+    .mode-tabs {
+      display: flex;
+      background: var(--bg-alt);
+      padding: 0.5rem;
+      border-radius: var(--radius-lg);
+      gap: 0.25rem;
+      margin-bottom: 2rem;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .mode-tabs::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--transition-base);
+      white-space: nowrap;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tab-btn:hover { color: var(--text); background: var(--bg-tertiary); }
+    .tab-btn.active {
+      background: var(--accent);
+      color: var(--accent-text);
+      box-shadow: var(--shadow-md);
+    }
+    .tab-btn svg { width: 16px; height: 16px; }
+
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 1fr) 1.5fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 1.75rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      min-height: 600px;
+      transition: all var(--transition-slow);
+      position: relative;
+      overflow: hidden;
+    }
+    .panel:hover { box-shadow: var(--shadow-md); }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .panel-title svg { width: 20px; height: 20px; color: var(--accent); }
+
+    /* =========================================
+       6. FORMS & INPUTS
+       ========================================= */
+    .mode-input { display: none; flex-direction: column; gap: 1.25rem; flex: 1; }
+    .mode-input.active {
+      display: flex;
+      animation: fadeSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    .form-label { font-weight: 600; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 0.4rem; }
+    .form-label svg { width: 14px; height: 14px; color: var(--accent); }
+    
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+    .checkbox-group { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+    .checkbox-pill { position: relative; }
+    .checkbox-pill input { position: absolute; opacity: 0; pointer-events: none; }
+    .checkbox-pill label {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.5rem 1rem; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: var(--radius-full); font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; transition: all var(--transition-base); user-select: none;
+    }
+    .checkbox-pill label:hover { border-color: var(--accent); background: var(--accent-light); }
+    .checkbox-pill input:checked + label {
+      background: var(--accent); color: var(--accent-text); border-color: transparent;
+      box-shadow: var(--shadow-sm); transform: translateY(-1px);
+    }
+
+    select, textarea {
+      width: 100%; padding: 0.85rem 1rem; 
+      border: 1.5px solid var(--border); border-radius: var(--radius-md);
+      background: var(--bg); color: var(--text); 
+      transition: all var(--transition-base);
+    }
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 16px;
+      padding-right: 2.5rem;
+    }
+    select:hover, textarea:hover { border-color: var(--border-focus); }
+    select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-light); }
+    textarea { min-height: 220px; resize: vertical; line-height: 1.6; font-size: 0.95rem; }
+    textarea::placeholder { color: var(--text-muted); }
+
+    .file-upload {
+      position: relative; padding: 1.25rem; border: 2px dashed var(--border);
+      border-radius: var(--radius-md); text-align: center; cursor: pointer;
+      transition: all var(--transition-base); background: var(--bg);
+    }
+    .file-upload:hover { border-color: var(--accent); background: var(--accent-light); transform: translateY(-2px); }
+    .file-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .file-upload-content { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; pointer-events: none; }
+    .file-upload-icon { width: 28px; height: 28px; color: var(--accent); }
+    .file-upload-text { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+    .file-upload-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+    .input-footer {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--border);
+    }
+    .char-count { font-size: 0.8rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .actions { display: flex; gap: 0.75rem; }
+
+    .btn {
+      padding: 0.75rem 1.5rem; border-radius: var(--radius-md);
+      font-weight: 600; font-size: 0.9rem; cursor: pointer;
+      transition: all var(--transition-base); border: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      position: relative; overflow: hidden;
+    }
+    .btn svg { width: 16px; height: 16px; }
+    .btn-primary { background: var(--accent); color: var(--accent-text); box-shadow: var(--shadow-sm); }
+    .btn-primary::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
+      transform: translateX(-100%); transition: transform 0.6s;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .btn-primary:hover:not(:disabled)::before { transform: translateX(100%); }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    
+    .btn-ghost { background: var(--bg); color: var(--text-secondary); border: 1.5px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border-focus); }
+
+    /* =========================================
+       7. OUTPUT PANEL & RENDERED CONTENT
+       ========================================= */
+    .output-panel { position: relative; }
+    
+    .output-toolbar {
+      display: flex; gap: 0.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+      margin-bottom: 1.25rem; opacity: 0; max-height: 0; overflow: hidden;
+      transition: all var(--transition-base);
+    }
+    .output-toolbar.visible { opacity: 1; max-height: 60px; }
+    
+    .toolbar-btn {
+      padding: 0.5rem 0.875rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 500;
+      color: var(--text-secondary); display: inline-flex; align-items: center; gap: 0.375rem;
+      transition: all var(--transition-base);
+    }
+    .toolbar-btn:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); transform: translateY(-1px); }
+    .toolbar-btn svg { width: 14px; height: 14px; }
+
+    .output-content { flex: 1; overflow-y: auto; padding-right: 0.5rem; font-size: 0.95rem; line-height: 1.7; }
+    .mode-output { display: none; }
+    .mode-output.active { display: block; animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .output-content::-webkit-scrollbar { width: 6px; }
+    .output-content::-webkit-scrollbar-track { background: transparent; }
+    .output-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .output-content::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+    
+    .empty-state {
+      height: 100%; min-height: 400px; display: flex; flex-direction: column; 
+      align-items: center; justify-content: center; text-align: center; 
+      color: var(--text-muted); gap: 1rem; padding: 2rem;
+    }
+    .empty-state-icon {
+      width: 64px; height: 64px; background: var(--accent-light); border-radius: var(--radius-lg);
+      display: grid; place-items: center; color: var(--accent); animation: float 3s ease-in-out infinite;
+    }
+    .empty-state-icon svg { width: 32px; height: 32px; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .empty-state h3 { color: var(--text); font-size: 1.1rem; font-weight: 600; }
+    .empty-state p { font-size: 0.9rem; max-width: 320px; }
+
+    /* Generated Content Typography */
+    .output-content h1, .output-content h2, .output-content h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: 700; line-height: 1.3; }
+    .output-content h1 { font-size: 1.75rem; color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
+    .output-content h2 { font-size: 1.4rem; color: var(--text); }
+    .output-content h3 { font-size: 1.15rem; color: var(--text-secondary); }
+    .output-content p { margin-bottom: 1rem; }
+    .output-content ul, .output-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+    .output-content li { margin-bottom: 0.5rem; }
+    .output-content li::marker { color: var(--accent); }
+    .output-content strong { color: var(--accent); font-weight: 700; background: var(--accent-light); padding: 0.1em 0.3em; border-radius: 4px; }
+    .output-content em { color: var(--text-secondary); }
+    .output-content code { background: var(--bg-tertiary); padding: 0.2em 0.4em; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+    .output-content blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; color: var(--text-secondary); font-style: italic; }
+
+    /* Flashcards */
+    .fc-card { 
+      border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.25rem; 
+      background: var(--bg); border-left: 4px solid var(--accent); box-shadow: var(--shadow-sm);
+      transition: all var(--transition-base); position: relative; overflow: hidden;
+      animation: cardPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) backwards;
+    }
+    .fc-card:nth-child(1) { animation-delay: 0.05s; }
+    .fc-card:nth-child(2) { animation-delay: 0.1s; }
+    .fc-card:nth-child(3) { animation-delay: 0.15s; }
+    .fc-card:nth-child(4) { animation-delay: 0.2s; }
+    .fc-card:nth-child(5) { animation-delay: 0.25s; }
+    @keyframes cardPop { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    
+    .fc-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--accent); }
+    .fc-q { font-weight: 700; color: var(--text); margin-bottom: 0.75rem; font-size: 1.05em; display: flex; gap: 0.5rem; align-items: flex-start; }
+    .fc-q::before { content: "❓"; font-size: 1.1em; }
+    .fc-a { color: var(--text-secondary); line-height: 1.6; padding-top: 0.75rem; border-top: 1px dashed var(--border); display: flex; gap: 0.5rem; align-items: flex-start; }
+    .fc-a::before { content: "💡"; font-size: 1.1em; }
+
+    .fc-copy-btn {
+      position: absolute; top: 0.75rem; right: 0.75rem;
+      background: var(--bg-tertiary); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); width: 32px; height: 32px;
+      display: grid; place-items: center; opacity: 0; 
+      transition: all var(--transition-base); color: var(--text-secondary);
+    }
+    .fc-card:hover .fc-copy-btn { opacity: 1; }
+    .fc-copy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); transform: scale(1.1); }
+    .fc-copy-btn svg { width: 14px; height: 14px; }
+
+    .error-msg {
+      background: rgba(239, 68, 68, 0.1); color: var(--error); padding: 1.25rem;
+      border-radius: var(--radius-md); border: 1px solid var(--error); font-size: 0.9rem; font-weight: 500;
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    [data-theme="dark"] .error-msg { background: rgba(248, 113, 113, 0.15); }
+
+    /* Skeleton Loader */
+    .skeleton-container { display: flex; flex-direction: column; gap: 1rem; padding: 1rem 0; }
+    .skeleton {
+      background: var(--bg-tertiary); border-radius: var(--radius-sm);
+      position: relative; overflow: hidden;
+    }
+    .skeleton::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+    [data-theme="dark"] .skeleton::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent); }
+    @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+    /* =========================================
+       8. CHAT WIDGET
+       ========================================= */
+    .chat-widget { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 900; }
+    .chat-toggle {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      color: white; border: none; cursor: pointer; box-shadow: var(--shadow-lg);
+      display: grid; place-items: center; transition: all var(--transition-base);
+      position: relative;
+    }
+    .chat-toggle::before {
+      content: ''; position: absolute; inset: -4px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      border-radius: 50%; opacity: 0.4; filter: blur(12px); z-index: -1;
+      animation: pulseGlow 2s ease-in-out infinite;
+    }
+    @keyframes pulseGlow { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.1); } }
+    .chat-toggle:hover { transform: scale(1.05) rotate(-5deg); }
+    .chat-toggle svg { width: 26px; height: 26px; transition: transform var(--transition-base); }
+    .chat-toggle.active svg { transform: rotate(180deg); }
+
+    .chat-window {
+      position: absolute; bottom: 80px; right: 0;
+      width: 380px; height: 540px;
+      background: var(--bg-alt); border: 1px solid var(--border);
+      border-radius: var(--radius-xl); box-shadow: var(--shadow-xl);
+      display: flex; flex-direction: column;
+      transform: translateY(20px) scale(0.95); opacity: 0; pointer-events: none;
+      transition: all var(--transition-base); overflow: hidden;
+    }
+    .chat-window.open { transform: translateY(0) scale(1); opacity: 1; pointer-events: auto; }
+
+    .chat-header {
+      padding: 1rem 1.25rem; background: var(--accent); color: white;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .chat-header h3 { font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+    .chat-close {
+      width: 28px; height: 28px; background: rgba(255,255,255,0.2); border-radius: 50%;
+      color: white; display: grid; place-items: center; transition: all var(--transition-base);
+    }
+    .chat-close:hover { background: rgba(255,255,255,0.3); transform: rotate(90deg); }
+    .chat-close svg { width: 14px; height: 14px; }
+    
+    .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .chat-bubble {
+      max-width: 85%; padding: 0.75rem 1rem; border-radius: var(--radius-lg);
+      font-size: 0.9rem; line-height: 1.5; animation: bubblePop 0.3s ease;
+    }
+    @keyframes bubblePop { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    .chat-bubble.user { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
+    .chat-bubble.ai { align-self: flex-start; background: var(--bg-tertiary); color: var(--text); border-bottom-left-radius: 4px; }
+    .chat-bubble.ai p { margin-bottom: 0.5rem; }
+    .chat-bubble.ai p:last-child { margin-bottom: 0; }
+    .chat-bubble.ai strong { background: rgba(79, 70, 229, 0.15); }
+
+    .chat-typing { display: flex; gap: 4px; padding: 0.75rem 1rem; background: var(--bg-tertiary); border-radius: var(--radius-lg); align-self: flex-start; }
+    .chat-typing span { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: typingDot 1.4s ease-in-out infinite; }
+    .chat-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .chat-typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingDot { 0%, 60%, 100% { transform: scale(0.6); opacity: 0.5; } 30% { transform: scale(1); opacity: 1; } }
+
+    .chat-input-area { padding: 1rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; background: var(--bg-alt); }
+    .chat-input {
+      flex: 1; padding: 0.75rem 1rem; border: 1.5px solid var(--border);
+      border-radius: var(--radius-full); background: var(--bg); color: var(--text);
+      transition: all var(--transition-base);
+    }
+    .chat-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-light); }
+    .chat-send-btn {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: var(--accent); color: white; border: none; cursor: pointer;
+      display: grid; place-items: center; transition: all var(--transition-base);
+    }
+    .chat-send-btn:hover:not(:disabled) { transform: scale(1.1); box-shadow: var(--shadow-md); }
+    .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .chat-send-btn svg { width: 18px; height: 18px; }
+
+    /* =========================================
+       9. HISTORY PANEL & MODALS
+       ========================================= */
+    .history-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(8px);
+      z-index: 150; opacity: 0; pointer-events: none; transition: opacity var(--transition-base);
+    }
+    .history-overlay.open { opacity: 1; pointer-events: auto; }
+
+    .history-panel {
+      position: fixed; top: 0; right: 0; width: 100%; max-width: 420px; height: 100vh;
+      background: var(--bg-alt); box-shadow: var(--shadow-xl); z-index: 200;
+      transform: translateX(100%); transition: transform var(--transition-slow);
+      display: flex; flex-direction: column;
+    }
+    .history-panel.open { transform: translateX(0); }
+    
+    .history-header {
+      padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .history-title { font-size: 1.1rem; font-weight: 700; }
+    .history-list { flex: 1; overflow-y: auto; padding: 1rem; }
+    
+    .history-item {
+      padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-md);
+      margin-bottom: 0.75rem; cursor: pointer; transition: all var(--transition-base);
+    }
+    .history-item:hover { border-color: var(--accent); background: var(--bg-tertiary); transform: translateX(-4px); }
+    .history-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .history-mode {
+      font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.6rem;
+      background: var(--accent-light); color: var(--accent); border-radius: var(--radius-full);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .history-time { font-size: 0.75rem; color: var(--text-muted); }
+    .history-preview {
+      font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    /* =========================================
+       10. TOAST NOTIFICATIONS
+       ========================================= */
+    .toast-container {
+      position: fixed; top: 5rem; right: 1.5rem; z-index: 1000;
+      display: flex; flex-direction: column; gap: 0.75rem; pointer-events: none;
+    }
+    .toast {
+      background: var(--bg-alt); border: 1px solid var(--border);
+      padding: 1rem 1.25rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-xl);
+      min-width: 280px; display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.9rem; font-weight: 500; transform: translateX(calc(100% + 2rem));
+      transition: transform var(--transition-spring); pointer-events: auto;
+    }
+    .toast.show { transform: translateX(0); }
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--error); }
+    .toast.info { border-left: 4px solid var(--accent); }
+    .toast-icon { width: 20px; height: 20px; flex-shrink: 0; }
+    .toast.success .toast-icon { color: var(--success); }
+    .toast.error .toast-icon { color: var(--error); }
+    .toast.info .toast-icon { color: var(--accent); }
+
+    /* =========================================
+       11. FOOTER & RESPONSIVE
+       ========================================= */
+    footer {
+      text-align: center; padding: 2rem 1.5rem; color: var(--text-muted);
+      font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: auto;
+    }
+
+    @media (max-width: 1024px) {
+      .workspace-grid { grid-template-columns: 1fr; }
+      .panel { min-height: auto; }
+    }
+    @media (max-width: 768px) {
+      header { padding: 1rem; }
+      .brand-text { display: none; }
+      .workspace { padding: 1rem; }
+      .mode-tabs { gap: 0.25rem; padding: 0.375rem; }
+      .tab-btn { padding: 0.625rem 0.875rem; font-size: 0.8rem; }
+      .tab-btn svg { display: none; }
+      .panel { padding: 1.25rem; border-radius: var(--radius-lg); }
+      .form-row { grid-template-columns: 1fr; }
+      .input-footer { flex-direction: column; align-items: stretch; gap: 1rem; }
+      .actions { width: 100%; }
+      .actions .btn { flex: 1; }
+      .chat-window { width: calc(100vw - 2rem); right: -0.5rem; height: 70vh; }
+      .history-panel { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">SS</div>
+      <div class="brand-text">
+        <h1>Study<span>Sphere</span></h1>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="sound-toggle" title="Toggle Sound Effects">
+        <svg id="sound-on" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        <svg id="sound-off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+      </button>
+      <button class="icon-btn" id="history-toggle" title="Session History">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+      </button>
+      <button class="icon-btn" id="theme-toggle" title="Toggle Theme">
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>StudySphere <span>AI Workspace</span></h1>
+      <p>Generate structured notes, smart flashcards, edit essays, and brainstorm ideas with your personal AI study assistant.</p>
+    </section>
+
+    <section class="workspace" id="workspace">
+      <div class="mode-tabs" role="tablist">
+        <button class="tab-btn active" data-mode="notes">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+          Notes
+        </button>
+        <button class="tab-btn" data-mode="flashcards">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M12 4v16"></path></svg>
+          Flashcards
+        </button>
+        <button class="tab-btn" data-mode="editor">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          Editor
+        </button>
+        <button class="tab-btn" data-mode="translate">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Translate
+        </button>
+        <button class="tab-btn" data-mode="creative">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          Creative
+        </button>
+      </div>
+      
+      <div class="workspace-grid">
+        <!-- Input Panel -->
+        <div class="panel input-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              Input & Context
+            </h3>
+          </div>
+          
+          <!-- Notes Mode -->
+          <div id="input-notes" class="mode-input active">
+            <div class="form-group">
+              <label class="form-label" for="notes-subject">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                Subject Context
+              </label>
+              <select id="notes-subject">
+                <option value="General">General</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="History">History</option>
+                <option value="Literature">Literature</option>
+                <option value="Computer Science">Computer Science</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="notes-topic">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                Topic or Notes
+              </label>
+              <textarea id="notes-topic" placeholder="e.g., The causes of World War 1 or paste your lecture notes here..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="file-upload">
+                <input type="file" accept=".txt,.md,.pdf,.docx" data-target="notes-topic">
+                <div class="file-upload-content">
+                  <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span class="file-upload-text">Upload Document</span>
+                  <span class="file-upload-hint">.txt, .md, .pdf, .docx</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Flashcards Mode -->
+          <div id="input-flashcards" class="mode-input">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="fc-diff">Difficulty</label>
+                <select id="fc-diff">
+                  <option value="Basic">Basic</option>
+                  <option value="Intermediate">Intermediate</option>
+                  <option value="Advanced">Advanced</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="fc-count">Count</label>
+                <select id="fc-count">
+                  <option value="5">5 Cards</option>
+                  <option value="10" selected>10 Cards</option>
+                  <option value="15">15 Cards</option>
+                  <option value="20">20 Cards</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="fc-notes">Notes / Topic</label>
+              <textarea id="fc-notes" placeholder="Paste your lecture notes or describe the topic..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="file-upload">
+                <input type="file" accept=".txt,.md,.pdf,.docx" data-target="fc-notes">
+                <div class="file-upload-content">
+                  <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span class="file-upload-text">Upload Document</span>
+                  <span class="file-upload-hint">.txt, .md, .pdf, .docx</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Smart Editor Mode -->
+          <div id="input-editor" class="mode-input">
+            <div class="form-group">
+              <label class="form-label">Tone Adjustments</label>
+              <div class="checkbox-group">
+                <div class="checkbox-pill"><input type="checkbox" id="ed-clarity" checked><label for="ed-clarity">✨ Clarity</label></div>
+                <div class="checkbox-pill"><input type="checkbox" id="ed-formal"><label for="ed-formal">🎓 Formal</label></div>
+                <div class="checkbox-pill"><input type="checkbox" id="ed-casual"><label for="ed-casual">💬 Casual</label></div>
+                <div class="checkbox-pill"><input type="checkbox" id="ed-concise"><label for="ed-concise">⚡ Concise</label></div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="ed-text">Text to Edit</label>
+              <textarea id="ed-text" placeholder="Paste the text you want to improve..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="file-upload">
+                <input type="file" accept=".txt,.md,.pdf,.docx" data-target="ed-text">
+                <div class="file-upload-content">
+                  <svg class="file-upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span class="file-upload-text">Upload Document</span>
+                  <span class="file-upload-hint">.txt, .md, .pdf, .docx</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Translate Mode -->
+          <div id="input-translate" class="mode-input">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="tr-src">Source Language</label>
+                <select id="tr-src">
+                  <option value="English">English</option>
+                  <option value="Spanish">Spanish</option>
+                  <option value="French">French</option>
+                  <option value="German">German</option>
+                  <option value="Japanese">Japanese</option>
+                  <option value="Chinese">Chinese</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="tr-tgt">Target Language</label>
+                <select id="tr-tgt">
+                  <option value="Spanish">Spanish</option>
+                  <option value="English">English</option>
+                  <option value="French">French</option>
+                  <option value="German">German</option>
+                  <option value="Japanese">Japanese</option>
+                  <option value="Chinese">Chinese</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="tr-text">Text to Translate</label>
+              <textarea id="tr-text" placeholder="Enter text to translate..."></textarea>
+            </div>
+          </div>
+
+          <!-- Creative Mode -->
+          <div id="input-creative" class="mode-input">
+            <div class="form-group">
+              <label class="form-label" for="cr-type">What do you need?</label>
+              <select id="cr-type">
+                <option value="Essay Outline">Essay Outline</option>
+                <option value="Project Ideas">Project Ideas</option>
+                <option value="Practice Questions">Practice Questions</option>
+                <option value="Study Schedule">Study Schedule</option>
+                <option value="Mnemonics">Mnemonics</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="cr-topic">Topic / Description</label>
+              <textarea id="cr-topic" placeholder="e.g., The impact of social media on teenage mental health..."></textarea>
+            </div>
+          </div>
+
+          <div class="input-footer">
+            <span class="char-count" id="char-count">0 words · 0 chars</span>
+            <div class="actions">
+              <button type="button" id="btn-clear" class="btn btn-ghost">Clear</button>
+              <button type="button" id="btn-generate" class="btn btn-primary">
+                <span id="btn-text">Generate</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output Panel -->
+        <div class="panel output-panel">
+          <div class="panel-header">
+            <h3 class="panel-title">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+              AI Output
+            </h3>
+          </div>
+          
+          <div class="output-toolbar" id="output-toolbar">
+            <button class="toolbar-btn" id="copy-all-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy
+            </button>
+            <button class="toolbar-btn" id="download-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Download
+            </button>
+          </div>
+
+          <div id="output-notes" class="mode-output active output-content">
+            <div class="empty-state">
+              <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></div>
+              <h3>Ready to generate notes</h3>
+              <p>Enter a topic or paste your notes to create structured study materials with AI.</p>
+            </div>
+          </div>
+          <div id="output-flashcards" class="mode-output output-content">
+            <div class="empty-state">
+              <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg></div>
+              <h3>Flashcard generator</h3>
+              <p>Enter your notes to generate Q&A flashcards for active recall practice.</p>
+            </div>
+          </div>
+          <div id="output-editor" class="mode-output output-content">
+            <div class="empty-state">
+              <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></div>
+              <h3>Smart editor ready</h3>
+              <p>Paste your text to improve clarity, adjust tone, and highlight key terms.</p>
+            </div>
+          </div>
+          <div id="output-translate" class="mode-output output-content">
+            <div class="empty-state">
+              <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg></div>
+              <h3>Translation assistant</h3>
+              <p>Enter text and select languages to get accurate translations with explanations.</p>
+            </div>
+          </div>
+          <div id="output-creative" class="mode-output output-content">
+            <div class="empty-state">
+              <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg></div>
+              <h3>Creative brainstorm</h3>
+              <p>Enter a topic to generate outlines, ideas, and practice questions.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>StudySphere · Built for focused learning · © 2026</p>
+  </footer>
+
+  <!-- Chat Widget -->
+  <div class="chat-widget">
+    <button class="chat-toggle" id="chat-toggle" aria-label="Open Chat">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+    </button>
+    <div class="chat-window" id="chat-window">
+      <div class="chat-header">
+        <h3>Study Assistant</h3>
+        <button class="chat-close" id="chat-close">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-bubble ai"><p>👋 Hi there! I'm your AI study assistant. Ask me anything about your coursework, concepts you're struggling with, or study tips!</p></div>
+      </div>
+      <form class="chat-input-area" id="chat-form">
+        <input type="text" class="chat-input" id="chat-input" placeholder="Ask anything..." autocomplete="off" required>
+        <button type="submit" class="chat-send-btn" id="chat-send-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- History Panel -->
+  <div class="history-overlay" id="history-overlay"></div>
+  <aside class="history-panel" id="history-panel">
+    <div class="history-header">
+      <h3 class="history-title">Session History</h3>
+      <button class="icon-btn" id="history-close">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </aside>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      'use strict';
+
+      // =========================================
+      // 1. STATE & CONFIGURATION
+      // =========================================
+      const CONFIG = {
+        API_URL: '/api/chat',
+        MAX_HISTORY: 20
+      };
+
+      const state = {
+        currentMode: 'notes',
+        isLoading: false,
+        soundEnabled: localStorage.getItem('ss_sound') === 'true',
+        history: { notes: [], flashcards: [], editor: [], translate: [], creative: [] },
+        chatHistory: [
+          { role: 'system', content: 'You are a friendly, helpful AI study assistant for high school and university students. Answer questions clearly, encourage learning, and use HTML for formatting if helpful. Do not use markdown code blocks.' }
+        ]
+      };
+
+      // =========================================
+      // 2. DOM REFERENCES
+      // =========================================
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => document.querySelectorAll(sel);
+
+      const els = {
+        html: document.documentElement,
+        body: document.body,
+        themeToggle: $('#theme-toggle'),
+        soundToggle: $('#sound-toggle'),
+        soundOn: $('#sound-on'),
+        soundOff: $('#sound-off'),
+        tabBtns: $$('.tab-btn'),
+        modeInputs: $$('.mode-input'),
+        modeOutputs: $$('.mode-output'),
+        outputToolbar: $('#output-toolbar'),
+        charCount: $('#char-count'),
+        btnGenerate: $('#btn-generate'),
+        btnText: $('#btn-text'),
+        btnClear: $('#btn-clear'),
+        toastContainer: $('#toast-container'),
+        chatToggle: $('#chat-toggle'),
+        chatWindow: $('#chat-window'),
+        chatClose: $('#chat-close'),
+        chatForm: $('#chat-form'),
+        chatInput: $('#chat-input'),
+        chatMessages: $('#chat-messages'),
+        chatSendBtn: $('#chat-send-btn'),
+        historyToggle: $('#history-toggle'),
+        historyPanel: $('#history-panel'),
+        historyOverlay: $('#history-overlay'),
+        historyClose: $('#history-close'),
+        historyList: $('#history-list')
+      };
+
+      // =========================================
+      // 3. THEME & SOUND MANAGEMENT
+      // =========================================
+      function initTheme() {
+        const saved = localStorage.getItem('ss_theme');
+        if (saved === 'dark') els.html.setAttribute('data-theme', 'dark');
+        else if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) els.html.setAttribute('data-theme', 'dark');
+      }
+
+      els.themeToggle.addEventListener('click', () => {
+        const isDark = els.html.getAttribute('data-theme') === 'dark';
+        els.html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+        localStorage.setItem('ss_theme', isDark ? 'light' : 'dark');
+      });
+      initTheme();
+
+      function updateSoundIcon() {
+        els.soundOn.style.display = state.soundEnabled ? 'block' : 'none';
+        els.soundOff.style.display = state.soundEnabled ? 'none' : 'block';
+      }
+
+      els.soundToggle.addEventListener('click', () => {
+        state.soundEnabled = !state.soundEnabled;
+        localStorage.setItem('ss_sound', state.soundEnabled);
+        updateSoundIcon();
+        if (state.soundEnabled) playSound('success');
+      });
+      updateSoundIcon();
+
+      // Web Audio API for subtle sounds
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+
+      function playSound(type) {
+        if (!state.soundEnabled) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        if (type === 'send') {
+          osc.frequency.value = 600;
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } else if (type === 'success') {
+          osc.frequency.value = 800;
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        } else if (type === 'error') {
+          osc.frequency.value = 300;
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+        }
+      }
+
+      // =========================================
+      // 4. TOAST NOTIFICATIONS
+      // =========================================
+      function showToast(type, message) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        const icons = {
+          success: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+          error: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+          info: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>'
+        };
+        toast.innerHTML = `${icons[type]}<span>${message}</span>`;
+        els.toastContainer.appendChild(toast);
+        requestAnimationFrame(() => toast.classList.add('show'));
+        setTimeout(() => {
+          toast.classList.remove('show');
+          setTimeout(() => toast.remove(), 400);
+        }, 4000);
+      }
+
+      // =========================================
+      // 5. CORE AI HELPER (STRICT CONTRACT)
+      // =========================================
+      async function callAI(messages) {
+        try {
+          const response = await fetch(CONFIG.API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages })
+          });
+
+          if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            throw new Error(`Server error (${response.status}) ${errText}`);
+          }
+
+          const data = await response.json();
+          if (!data || typeof data.reply !== 'string') {
+            throw new Error('Invalid response format from server.');
+          }
+          return data.reply;
+        } catch (err) {
+          if (err instanceof TypeError) {
+            throw new Error('Network error. Ensure the backend is running on localhost:3000 and you are accessing the app via http://localhost:3000, not as a local file.');
+          }
+          throw err;
+        }
+      }
+
+      // =========================================
+      // 6. MARKDOWN TO HTML PARSER
+      // =========================================
+      function formatAIResponse(text) {
+        if (!text) return '';
+        text = text.replace(/^```(?:html|markdown)?\n?/gim, '').replace(/\n?```$/g, '').trim();
+        
+        const htmlTagRegex = /<\/?(?:h[1-6]|div|ul|ol|li|p|strong|em|span|table|tr|td|th|blockquote|code)[\s>]/i;
+        if (htmlTagRegex.test(text)) {
+          return text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+        }
+
+        let html = text;
+        html = html.replace(/^### (.*$)/gim, '<h3>📌 $1</h3>');
+        html = html.replace(/^## (.*$)/gim, '<h2>📚 $1</h2>');
+        html = html.replace(/^# (.*$)/gim, '<h1>🎓 $1</h1>');
+        html = html.replace(/\*\*\*(.*?)\*\*\*/gim, '<strong><em>$1</em></strong>');
+        html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+        html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+        html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+        html = html.replace(/((?:<li>.*<\/li>\s*)+)/gim, '<ul>$1</ul>');
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+        html = html.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+        
+        const blocks = html.split(/\n\n+/);
+        html = blocks.map(block => {
+          block = block.trim();
+          if (!block) return '';
+          if (block.match(/^<(h[1-6]|ul|ol|div|blockquote|table)/)) return block;
+          return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+        }).join('\n');
+        
+        return html;
+      }
+
+      // =========================================
+      // 7. MODE SWITCHING & UI STATE
+      // =========================================
+      const modeTitles = { notes: 'Study Notes', flashcards: 'Flashcards', editor: 'Smart Editor', translate: 'Translation', creative: 'Creative Brainstorm' };
+      const textareaMap = { notes: 'notes-topic', flashcards: 'fc-notes', editor: 'ed-text', translate: 'tr-text', creative: 'cr-topic' };
+
+      function switchMode(mode) {
+        state.currentMode = mode;
+        els.tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+        els.modeInputs.forEach(input => input.classList.toggle('active', input.id === `input-${mode}`));
+        els.modeOutputs.forEach(output => output.classList.toggle('active', output.id === `output-${mode}`));
+        updateCharCount();
+        updateToolbarVisibility();
+      }
+
+      function updateToolbarVisibility() {
+        const activeOutput = $(`#output-${state.currentMode}`);
+        const hasContent = activeOutput && activeOutput.innerText.trim().length > 0 && !activeOutput.querySelector('.empty-state') && !activeOutput.querySelector('.skeleton-container');
+        els.outputToolbar.classList.toggle('visible', hasContent);
+      }
+
+      els.tabBtns.forEach(btn => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
+
+      function getActiveTextarea() { return $(`#${textareaMap[state.currentMode]}`); }
+
+      function updateCharCount() {
+        const ta = getActiveTextarea();
+        const text = ta ? ta.value : '';
+        const chars = text.length;
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        els.charCount.textContent = `${words} words · ${chars} chars`;
+      }
+
+      $$('textarea').forEach(ta => ta.addEventListener('input', updateCharCount));
+      updateCharCount();
+
+      // =========================================
+      // 8. FILE UPLOAD HANDLER
+      // =========================================
+      $$('.file-upload input[type="file"]').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const ext = file.name.split('.').pop().toLowerCase();
+          const targetId = input.dataset.target;
+          const ta = $(`#${targetId}`);
+
+          if (ext === 'txt' || ext === 'md') {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (ta) {
+                ta.value = event.target.result;
+                updateCharCount();
+                showToast('success', `Loaded text from ${file.name}`);
+              }
+            };
+            reader.onerror = () => showToast('error', 'Failed to read file.');
+            reader.readAsText(file);
+          } else if (ext === 'pdf' || ext === 'docx') {
+            showToast('info', 'Advanced parsing for PDF/Word is limited. Please copy-paste the text for best results.');
+          } else {
+            showToast('error', 'Unsupported file type.');
+          }
+          input.value = ''; // Reset
+        });
+      });
+
+      // =========================================
+      // 9. CLEAR BUTTON
+      // =========================================
+      els.btnClear.addEventListener('click', () => {
+        const ta = getActiveTextarea();
+        if (ta) { ta.value = ''; updateCharCount(); }
+        const output = $(`#output-${state.currentMode}`);
+        if (output) {
+          output.innerHTML = `<div class="empty-state"><div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></div><h3>Ready to generate</h3><p>Enter a prompt and click Generate.</p></div>`;
+          updateToolbarVisibility();
+        }
+      });
+
+      // =========================================
+      // 10. SKELETON LOADER
+      // =========================================
+      function showSkeleton() {
+        const output = $(`#output-${state.currentMode}`);
+        output.innerHTML = `<div class="skeleton-container"><div class="skeleton" style="height:28px;width:60%;"></div><div class="skeleton" style="height:16px;width:100%;"></div><div class="skeleton" style="height:16px;width:90%;"></div><div class="skeleton" style="height:16px;width:95%;"></div><div class="skeleton" style="height:24px;width:45%;margin-top:1.5rem;"></div><div class="skeleton" style="height:16px;width:100%;"></div><div class="skeleton" style="height:16px;width:85%;"></div></div>`;
+      }
+
+      // =========================================
+      // 11. FLASHCARD ENHANCEMENT
+      // =========================================
+      function enhanceFlashcards() {
+        $$('.fc-card').forEach(card => {
+          if (card.querySelector('.fc-copy-btn')) return;
+          const btn = document.createElement('button');
+          btn.className = 'fc-copy-btn';
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const q = card.querySelector('.fc-q')?.innerText || '';
+            const a = card.querySelector('.fc-a')?.innerText || '';
+            navigator.clipboard.writeText(`Q: ${q}\nA: ${a}`).then(() => {
+              btn.innerHTML = '✓';
+              setTimeout(() => { btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'; }, 2000);
+            });
+          };
+          card.appendChild(btn);
+        });
+      }
+
+      // =========================================
+      // 12. PROMPT BUILDERS
+      // =========================================
+      function buildMessages(mode) {
+        const ta = getActiveTextarea();
+        const text = ta ? ta.value.trim() : '';
+        if (!text) return null;
+
+        let systemPrompt = '';
+        let userPrompt = text;
+
+        if (mode === 'notes') {
+          const subject = $('#notes-subject').value;
+          systemPrompt = `You are an expert study tutor specializing in ${subject}. Generate structured study notes with HTML headings (<h2>, <h3>), bullet points (<ul>, <li>), and bold key terms (<strong>). Return ONLY valid HTML.`;
+        } else if (mode === 'flashcards') {
+          const diff = $('#fc-diff').value;
+          const count = $('#fc-count').value;
+          systemPrompt = `You are a flashcard generator creating ${diff} level flashcards. Generate exactly ${count} question-answer flashcards. Return STRICTLY HTML using this exact structure for each card: <div class="fc-card"><div class="fc-q">Question</div><div class="fc-a">Answer</div></div>. No markdown.`;
+        } else if (mode === 'editor') {
+          const clarity = $('#ed-clarity').checked;
+          const formal = $('#ed-formal').checked;
+          const casual = $('#ed-casual').checked;
+          const concise = $('#ed-concise').checked;
+          let tone = [];
+          if (clarity) tone.push('improve clarity');
+          if (formal) tone.push('make formal');
+          if (casual) tone.push('make casual');
+          if (concise) tone.push('make concise');
+          systemPrompt = `You are a writing coach. Rewrite the text to ${tone.join(', ') || 'improve flow'}. Bold key terms with <strong>. Return ONLY valid HTML.`;
+        } else if (mode === 'translate') {
+          const src = $('#tr-src').value;
+          const tgt = $('#tr-tgt').value;
+          systemPrompt = `You are a translator. Translate from ${src} to ${tgt}. Explain tricky terms in parentheses. Bold key vocabulary with <strong>. Return ONLY valid HTML.`;
+        } else if (mode === 'creative') {
+          const type = $('#cr-type').value;
+          systemPrompt = `You are a creative study assistant. Generate ${type}. Use HTML headings and lists. Return ONLY valid HTML.`;
+        }
+
+        return [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
+      }
+
+      // =========================================
+      // 13. MAIN GENERATION LOGIC
+      // =========================================
+      async function handleGenerate() {
+        if (state.isLoading) return;
+        const mode = state.currentMode;
+        const messages = buildMessages(mode);
+        if (!messages) { showToast('error', 'Please enter some text first.'); return; }
+
+        state.isLoading = true;
+        els.btnGenerate.disabled = true;
+        els.btnText.textContent = 'Processing...';
+        showSkeleton();
+        updateToolbarVisibility();
+        playSound('send');
+
+        try {
+          const reply = await callAI(messages);
+          const formatted = formatAIResponse(reply);
+          const output = $(`#output-${mode}`);
+          output.style.opacity = '0';
+          output.innerHTML = formatted;
+          requestAnimationFrame(() => { output.style.transition = 'opacity 0.4s ease'; output.style.opacity = '1'; });
+          if (mode === 'flashcards') setTimeout(enhanceFlashcards, 100);
+          updateToolbarVisibility();
+          saveToHistory(mode, getActiveTextarea().value, formatted);
+          showToast('success', 'Generation complete!');
+          playSound('success');
+        } catch (err) {
+          console.error('Generation error:', err);
+          $(`#output-${mode}`).innerHTML = `<div class="error-msg">⚠️ Error: ${err.message}</div>`;
+          showToast('error', err.message);
+          playSound('error');
+        } finally {
+          state.isLoading = false;
+          els.btnGenerate.disabled = false;
+          els.btnText.textContent = 'Generate';
+        }
+      }
+
+      els.btnGenerate.addEventListener('click', handleGenerate);
+
+      // =========================================
+      // 14. OUTPUT TOOLBAR ACTIONS
+      // =========================================
+      $('#copy-all-btn').addEventListener('click', () => {
+        const text = $(`#output-${state.currentMode}`)?.innerText || '';
+        navigator.clipboard.writeText(text).then(() => showToast('success', 'Copied to clipboard'));
+      });
+
+      $('#download-btn').addEventListener('click', () => {
+        const text = $(`#output-${state.currentMode}`)?.innerText || '';
+        const blob = new Blob([text], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `studysphere-${state.currentMode}-${Date.now()}.md`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('success', 'File downloaded');
+      });
+
+      // =========================================
+      // 15. HISTORY MANAGEMENT
+      // =========================================
+      function saveToHistory(mode, input, output) {
+        const entry = { id: Date.now(), mode, input: input.substring(0, 100) + '...', output, timestamp: new Date().toISOString() };
+        state.history[mode].unshift(entry);
+        if (state.history[mode].length > CONFIG.MAX_HISTORY) state.history[mode] = state.history[mode].slice(0, CONFIG.MAX_HISTORY);
+        renderHistory();
+      }
+
+      function renderHistory() {
+        const allEntries = Object.values(state.history).flat().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        if (allEntries.length === 0) {
+          els.historyList.innerHTML = '<div class="empty-state" style="min-height:200px;"><p>No history yet.</p></div>';
+          return;
+        }
+        els.historyList.innerHTML = allEntries.map(entry => `
+          <div class="history-item" data-id="${entry.id}" data-mode="${entry.mode}">
+            <div class="history-item-header">
+              <span class="history-mode">${entry.mode}</span>
+              <span class="history-time">${new Date(entry.timestamp).toLocaleString()}</span>
+            </div>
+            <div class="history-preview">${entry.input}</div>
+          </div>
+        `).join('');
+
+        els.historyList.querySelectorAll('.history-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const mode = item.dataset.mode;
+            const id = parseInt(item.dataset.id);
+            const entry = state.history[mode].find(e => e.id === id);
+            if (entry) {
+              switchMode(mode);
+              $(`#output-${mode}`).innerHTML = entry.output;
+              if (mode === 'flashcards') enhanceFlashcards();
+              updateToolbarVisibility();
+              closeHistory();
+              showToast('success', 'History loaded');
+            }
+          });
+        });
+      }
+
+      function openHistory() { els.historyPanel.classList.add('open'); els.historyOverlay.classList.add('open'); }
+      function closeHistory() { els.historyPanel.classList.remove('open'); els.historyOverlay.classList.remove('open'); }
+
+      els.historyToggle.addEventListener('click', openHistory);
+      els.historyClose.addEventListener('click', closeHistory);
+      els.historyOverlay.addEventListener('click', closeHistory);
+      renderHistory();
+
+      // =========================================
+      // 16. CHAT WIDGET LOGIC
+      // =========================================
+      function appendChatBubble(role, text) {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${role}`;
+        bubble.innerHTML = role === 'ai' ? formatAIResponse(text) : text;
+        els.chatMessages.appendChild(bubble);
+        els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+      }
+
+      function showChatTyping() {
+        const typing = document.createElement('div');
+        typing.className = 'chat-typing';
+        typing.id = 'chat-typing';
+        typing.innerHTML = '<span></span><span></span><span></span>';
+        els.chatMessages.appendChild(typing);
+        els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+      }
+
+      function hideChatTyping() {
+        const typing = $('#chat-typing');
+        if (typing) typing.remove();
+      }
+
+      function toggleChat() {
+        const isOpen = els.chatWindow.classList.toggle('open');
+        els.chatToggle.classList.toggle('active', isOpen);
+        if (isOpen) els.chatInput.focus();
+      }
+
+      els.chatToggle.addEventListener('click', toggleChat);
+      els.chatClose.addEventListener('click', toggleChat);
+
+      els.chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = els.chatInput.value.trim();
+        if (!text || state.isLoading) return;
+
+        appendChatBubble('user', text);
+        state.chatHistory.push({ role: 'user', content: text });
+        els.chatInput.value = '';
+        els.chatSendBtn.disabled = true;
+        showChatTyping();
+        playSound('send');
+
+        try {
+          const reply = await callAI(state.chatHistory);
+          hideChatTyping();
+          appendChatBubble('ai', reply);
+          state.chatHistory.push({ role: 'assistant', content: reply });
+          playSound('success');
+        } catch (err) {
+          hideChatTyping();
+          appendChatBubble('ai', `<span style="color: var(--error);">Error: ${err.message}</span>`);
+          showToast('error', 'Chat request failed');
+          playSound('error');
+        } finally {
+          els.chatSendBtn.disabled = false;
+          els.chatInput.focus();
+        }
+      });
+
+      // =========================================
+      // 17. KEYBOARD SHORTCUTS
+      // =========================================
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          const active = document.activeElement;
+          if (active?.tagName === 'TEXTAREA' || active?.tagName === 'INPUT') {
+            e.preventDefault();
+            els.btnGenerate.click();
+          }
+        }
+        if (e.key === 'Escape') {
+          closeHistory();
+          if (els.chatWindow.classList.contains('open')) toggleChat();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
