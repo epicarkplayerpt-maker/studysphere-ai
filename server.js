@@ -1,4 +1,4 @@
-// server.js - StudySphere Backend using Gemini API
+// server.js - StudySphere Backend using Gemini API with model fallback
 
 require('dotenv').config();
 const express = require('express');
@@ -23,21 +23,100 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Gemini API configuration
 // =========================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// Your exact model id:
-const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
-// Health check endpoint
+// Model priority list: best -> worst
+const GEMINI_MODEL_FALLBACKS = [
+  'gemini-3.5-flash',
+  'gemini-3.1-pro',
+  'gemini-3.1-flash',
+  'gemini-3.1-flash-lite'
+];
+
+// Helper: call a specific Gemini model once
+async function callGeminiModelOnce(model, contents) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048
+      }
+    })
+  });
+
+  return response;
+}
+
+// Helper: try models in order until one succeeds or all fail
+async function callGeminiWithFallback(contents) {
+  const errors = [];
+
+  for (const model of GEMINI_MODEL_FALLBACKS) {
+    try {
+      const response = await callGeminiModelOnce(model, contents);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Gemini API error (${response.status}) with model ${model}:`, errorText);
+
+        // Collect error info, then fall through to next model
+        errors.push({ model, status: response.status, body: errorText });
+
+        // Only short-circuit for certain client errors where retrying makes no sense
+        if (response.status === 401) {
+          // Auth problem: retrying with other models won't fix it
+          throw new Error(`Gemini authentication failed with model ${model}.`);
+        }
+
+        continue; // try next model in the list
+      }
+
+      const data = await response.json();
+
+      const reply =
+        data?.candidates?.[0]?.content?.parts
+          ?.map(p => p.text || '')
+          .join(' ')
+          .trim() || 'No response was generated.';
+
+      const usage = data.usage || null;
+
+      console.log(`[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokens ?? 'N/A'}`);
+
+      return { reply, model, usage };
+    } catch (err) {
+      console.error(`Gemini network/parse error with model ${model}:`, err);
+      errors.push({ model, error: err.message });
+      // Try the next model
+      continue;
+    }
+  }
+
+  // If we reach here, all models failed
+  console.error('All Gemini models failed in fallback chain:', errors);
+  throw new Error('All Gemini models are currently unavailable. Please try again later.');
+}
+
+// Health check endpoint - report highest priority model and key status
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     provider: 'gemini',
-    model: GEMINI_MODEL,
+    primaryModel: GEMINI_MODEL_FALLBACKS[0],
+    fallbackChain: GEMINI_MODEL_FALLBACKS,
+    geminiApiKeyConfigured: Boolean(GEMINI_API_KEY),
     timestamp: new Date().toISOString()
   });
 });
 
 // =========================
-// Main chat endpoint (Gemini)
+// Main chat endpoint (Gemini with fallback)
 // Frontend sends: { messages: [{ role, content }, ...] }
 // We return: { reply: "..." }
 // =========================
@@ -82,53 +161,17 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'No valid user/assistant messages provided' });
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
-    const response = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Gemini API error (${response.status}):`, errorText);
-
-      if (response.status === 401) {
-        return res.status(401).json({ error: 'Gemini authentication failed. Check GEMINI_API_KEY.' });
-      }
-      if (response.status === 429) {
-        return res.status(429).json({ error: 'Gemini rate limit exceeded. Please try again later.' });
-      }
-
-      return res.status(response.status).json({ error: `Gemini API error: ${response.status}` });
-    }
-
-    const data = await response.json();
-
-    // Extract reply text from Gemini response
-    const reply =
-      data?.candidates?.[0]?.content?.parts
-        ?.map(p => p.text || '')
-        .join(' ')
-        .trim() || 'No response was generated.';
+    // Call Gemini with fallback across multiple models
+    const { reply, model, usage } = await callGeminiWithFallback(contents);
 
     const duration = Date.now() - startTime;
-    console.log(`[Chat] Provider: Gemini, Model: ${GEMINI_MODEL}, Duration: ${duration}ms`);
+    console.log(`[Chat] Completed via model ${model} in ${duration}ms`);
 
-    return res.json({ reply });
+    return res.json({ reply, model, usage });
   } catch (err) {
-    console.error('Chat endpoint error (Gemini):', err);
+    console.error('Chat endpoint error (Gemini fallback):', err);
     return res.status(500).json({
-      error: 'Internal server error while calling Gemini',
+      error: 'AI service is currently unavailable. Please try again in a moment.',
       message: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
@@ -159,8 +202,8 @@ app.listen(PORT, () => {
 ║          StudySphere AI Workspace - Backend Server         ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Server running on: http://localhost:${PORT.toString().padEnd(27)}║
-║  Provider:         Gemini                                  ║
-║  Model configured: ${GEMINI_MODEL.padEnd(38)}║
+║  Provider:         Gemini (fallback chain)                 ║
+║  Models (priority): ${GEMINI_MODEL_FALLBACKS.join('  >  ').padEnd(34)}║
 ║  GEMINI_API_KEY:   ${GEMINI_API_KEY ? '✓ Configured' : '✗ Missing (check .env)'}${GEMINI_API_KEY ? '                            ' : '                     '}║
 ╚════════════════════════════════════════════════════════════╝
   `);
