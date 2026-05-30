@@ -167,7 +167,7 @@ app.post('/api/auth/google', async (req, res) => {
 
     const user = { sub: googleId, email, name, picture };
 
-    // Upsert into users table
+    // Upsert into users table (hardened)
     try {
       const upsertUserQuery = `
         INSERT INTO users (google_id, email, name, picture_url)
@@ -181,8 +181,29 @@ app.post('/api/auth/google', async (req, res) => {
         RETURNING id;
       `;
 
-      const result = await pool.query(upsertUserQuery, [googleId, email, name, picture]);
-      const userId = result.rows[0].id;
+      const params = [
+        googleId || '',
+        email || '',
+        name || email || '',
+        picture || null,
+      ];
+
+      const result = await pool.query(upsertUserQuery, params);
+
+      let userId;
+      if (result.rows.length > 0) {
+        userId = result.rows[0].id;
+      } else {
+        // Fallback in case RETURNING didn't give a row
+        const fallback = await pool.query(
+          'SELECT id FROM users WHERE google_id = $1 LIMIT 1',
+          [googleId]
+        );
+        if (fallback.rows.length === 0) {
+          throw new Error('User upsert did not return an id and no user found in fallback.');
+        }
+        userId = fallback.rows[0].id;
+      }
 
       console.log('Google user verified and upserted:', email, 'userId:', userId);
 
@@ -190,7 +211,10 @@ app.post('/api/auth/google', async (req, res) => {
       res.json({ user: { ...user, userId } });
     } catch (dbErr) {
       console.error('Error upserting user into DB:', dbErr);
-      return res.status(500).json({ error: 'Failed to persist user' });
+      return res.status(500).json({
+        error: 'Failed to persist user',
+        detail: process.env.NODE_ENV === 'development' ? dbErr.message : undefined,
+      });
     }
   } catch (err) {
     console.error('Error in /api/auth/google:', err);
