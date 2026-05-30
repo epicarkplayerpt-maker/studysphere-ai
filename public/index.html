@@ -8,6 +8,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <!-- KaTeX for Math Rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  
   <style>
     :root {
       --bg: #F8FAFC;
@@ -139,6 +148,121 @@
     .icon-btn svg { width: 20px; height: 20px; stroke-width: 2; }
     [data-theme="light"] .icon-moon { display: none; }
     [data-theme="dark"] .icon-sun { display: none; }
+
+    /* Sign-in UI */
+    .auth-status {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .auth-user {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-md);
+      font-size: 0.9rem;
+    }
+    .auth-user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .auth-user-info { display: flex; flex-direction: column; }
+    .auth-user-name { font-weight: 600; font-size: 0.85rem; }
+    .auth-user-email { font-size: 0.75rem; color: var(--text-muted); }
+    .auth-signin-btn {
+      padding: 0.5rem 1rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all var(--transition-base);
+    }
+    .auth-signin-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .auth-signout-btn {
+      padding: 0.4rem 0.75rem;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all var(--transition-base);
+    }
+    .auth-signout-btn:hover { background: var(--bg-tertiary); }
+
+    /* Auth Gate Overlay */
+    .auth-gate {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-base);
+    }
+    .auth-gate.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .auth-gate-content {
+      background: var(--bg-alt);
+      padding: 2.5rem;
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-xl);
+      max-width: 400px;
+      text-align: center;
+    }
+    .auth-gate-content h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+    .auth-gate-content p {
+      color: var(--text-secondary);
+      margin-bottom: 1.5rem;
+    }
+    .google-signin-btn {
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      background: white;
+      color: #333;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all var(--transition-base);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+    }
+    .google-signin-btn:hover {
+      background: #f8f9fa;
+      border-color: var(--border-focus);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+    .google-signin-btn img {
+      width: 20px;
+      height: 20px;
+    }
 
     .hero {
       max-width: 800px;
@@ -804,6 +928,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <div class="auth-status" id="auth-status"></div>
       <button class="icon-btn" id="sound-toggle" title="Toggle Sound Effects">
         <svg id="sound-on" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
         <svg id="sound-off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
@@ -1135,11 +1260,23 @@
   <footer>
     <p>StudySphere · Built for focused learning · © 2026</p>
     <p style="margin-top: 0.5rem; font-size: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.4;">
-      Powered by Gemini 3.1 Flash-Lite (Google Gemini API). 
+      Powered by Gemini API. 
       AI responses may be inaccurate or incomplete. Please verify important information independently. 
       This app does not provide legal, medical, or financial advice.
     </p>
   </footer>
+
+  <!-- Auth Gate Overlay -->
+  <div class="auth-gate" id="auth-gate">
+    <div class="auth-gate-content">
+      <h2>Welcome to StudySphere</h2>
+      <p>Sign in with your Google account to access your personalized study workspace.</p>
+      <button class="google-signin-btn" id="google-signin-btn">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23FFC107' d='M43.611,20.083H42V20H12v8h6.718c1.035,2.937,3.625,5,6.718,5c3.253,0,6-2.637,6-6c0-1.011-.161-1.977-.456-2.862C38.371,21.738,41.119,20.891,43.611,20.083z'/%3E%3Cpath fill='%23FFC107' d='M12,20c0-2.762,2.238-5,5-5s5,2.238,5,5s-2.238,5-5,5S12,22.762,12,20z'/%3E%3Cpath fill='%23FFC107' d='M35.122,11.878l-6.173-4.371C36.137,13.557,36,15.758,36,18c0,2.242-.137,4.443-1.049,6.122l-6.173-4.371C35.162,17.557,35,15.758,35,13.516C35,12.242,35.137,10.041,35.122,11.878z'/%3E%3Cpath fill='%23FFC107' d='M12,28c2.762,0,5-2.238,5-5s-2.238-5-5-5s-5,2.238-5,5S9.238,28,12,28z'/%3E%3C/svg%3E" alt="Google">
+        Sign in with Google
+      </button>
+    </div>
+  </div>
 
   <div class="chat-widget">
     <button class="chat-toggle" id="chat-toggle" aria-label="Open Chat">
@@ -1185,15 +1322,19 @@
           HISTORY: 'studysphere_history',
           CHAT: 'studysphere_chat_history',
           THEME: 'ss_theme',
-          SOUND: 'ss_sound'
+          SOUND: 'ss_sound',
+          USER: 'studysphere_user'
         }
       };
+      
+      const GOOGLE_CLIENT_ID = '779960370065-orcbqonmg0irnqivbcemhpbp73k0k93g.apps.googleusercontent.com';
 
       // State management
       const state = {
         currentMode: 'notes',
         isLoading: false,
         soundEnabled: false,
+        user: null,
         history: { notes: [], flashcards: [], quiz: [], editor: [], translate: [], creative: [], chat: [] },
         chatHistory: [
           { role: 'system', content: 'You are a friendly, helpful AI study assistant for high school and university students. Answer questions clearly, encourage learning, and use HTML for formatting if helpful. Do not use markdown code blocks.' }
@@ -1205,6 +1346,28 @@
       };
       
       let fcState = { deck: [], currentIndex: 0 };
+
+      // HTML Sanitizer for security
+      function sanitizeHTML(html) {
+        if (!html) return '';
+        
+        // Remove script tags and event handlers
+        let clean = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        clean = clean.replace(/\son\w+\s*=\s*(['"])[^'"]*\1/gi, '');
+        clean = clean.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+        
+        // Remove javascript: URLs
+        clean = clean.replace(/javascript:/gi, '');
+        
+        // Remove dangerous tags
+        const dangerousTags = ['iframe', 'object', 'embed', 'form'];
+        dangerousTags.forEach(tag => {
+          const regex = new RegExp(`<${tag}\\b[^>]*>.*?<\\/${tag}>`, 'gi');
+          clean = clean.replace(regex, '');
+        });
+        
+        return clean;
+      }
 
       // Storage helpers
       function loadFromStorage(key, defaultValue) {
@@ -1225,6 +1388,121 @@
           console.error('Error saving to storage:', e);
           return false;
         }
+      }
+
+      // Auth management
+      function checkAuth() {
+        const savedUser = loadFromStorage(CONFIG.STORAGE_KEYS.USER, null);
+        if (savedUser) {
+          state.user = savedUser;
+          updateAuthUI();
+        } else {
+          showAuthGate();
+        }
+      }
+
+      function updateAuthUI() {
+        const authStatus = document.getElementById('auth-status');
+        if (state.user) {
+          const initials = state.user.name.split(' ').map(n => n[0]).join('').toUpperCase();
+          authStatus.innerHTML = `
+            <div class="auth-user">
+              <div class="auth-user-avatar"></div>
+              <div class="auth-user-info">
+                <div class="auth-user-name"></div>
+                <div class="auth-user-email"></div>
+              </div>
+            </div>
+            <button class="auth-signout-btn" id="auth-signout-btn">Sign Out</button>
+          `;
+          
+          const avatarEl = authStatus.querySelector('.auth-user-avatar');
+          const nameEl = authStatus.querySelector('.auth-user-name');
+          const emailEl = authStatus.querySelector('.auth-user-email');
+          
+          if (state.user.picture) {
+            avatarEl.style.backgroundImage = `url(${state.user.picture})`;
+            avatarEl.style.backgroundSize = 'cover';
+            avatarEl.style.backgroundPosition = 'center';
+          } else {
+            avatarEl.textContent = initials;
+          }
+          nameEl.textContent = state.user.name;
+          emailEl.textContent = state.user.email;
+          
+          document.getElementById('auth-signout-btn').addEventListener('click', signOut);
+        } else {
+          authStatus.innerHTML = `
+            <button class="auth-signin-btn" id="auth-signin-btn">Sign In</button>
+          `;
+          document.getElementById('auth-signin-btn').addEventListener('click', showAuthGate);
+        }
+      }
+
+      function showAuthGate() {
+        document.getElementById('auth-gate').classList.add('visible');
+      }
+
+      function hideAuthGate() {
+        document.getElementById('auth-gate').classList.remove('visible');
+      }
+
+      function initGoogleAuth() {
+        if (typeof google !== 'undefined' && google.accounts) {
+          google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: onGoogleCredentialResponse
+          });
+        } else {
+          setTimeout(initGoogleAuth, 500);
+        }
+      }
+
+      async function onGoogleCredentialResponse(response) {
+        try {
+          showToast('info', 'Verifying credentials...');
+          const res = await fetch('/api/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: response.credential })
+          });
+          
+          const data = await res.json();
+          if (!res.ok || !data.user) {
+            console.error('Google auth failed:', data);
+            showToast('error', data.error || 'Authentication failed.');
+            return;
+          }
+
+          setCurrentUser(data.user);
+        } catch (err) {
+          console.error('Error calling /api/auth/google:', err);
+          showToast('error', 'Network error during authentication.');
+        }
+      }
+
+      function setCurrentUser(user) {
+        state.user = user;
+        saveToStorage(CONFIG.STORAGE_KEYS.USER, user);
+        updateAuthUI();
+        hideAuthGate();
+        showToast('success', 'Welcome, ' + user.name + '!');
+      }
+
+      function signInWithGoogle() {
+        if (typeof google !== 'undefined' && google.accounts) {
+          google.accounts.id.prompt();
+        } else {
+          showToast('error', 'Google Sign-In is still loading. Please try again in a moment.');
+        }
+      }
+
+      function signOut() {
+        state.user = null;
+        localStorage.removeItem(CONFIG.STORAGE_KEYS.USER);
+        updateAuthUI();
+        showAuthGate();
+        showToast('info', 'Signed out successfully');
       }
 
       // Load persisted data
@@ -1420,14 +1698,14 @@
         }
       }
 
-      // Format AI response
+      // Format AI response with sanitization
       function formatAIResponse(text) {
         if (!text) return '';
         text = text.replace(/^```(?:html|markdown)?\n?/gim, '').replace(/\n?```$/g, '').trim();
         
         const htmlTagRegex = /<\/?(?:h[1-6]|div|ul|ol|li|p|strong|em|span|table|tr|td|th|blockquote|code)[\s>]/i;
         if (htmlTagRegex.test(text)) {
-          return text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+          return sanitizeHTML(text);
         }
 
         let html = text;
@@ -1450,7 +1728,7 @@
           return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
         }).join('\n');
         
-        return html;
+        return sanitizeHTML(html);
       }
 
       // Mode switching
@@ -1703,6 +1981,7 @@
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Submit Answer';
+          answerInput.disabled = false;
         }
       }
 
@@ -1979,6 +2258,8 @@
         initTheme();
         initAudio();
         updateSoundIcon();
+        checkAuth();
+        initGoogleAuth();
         
         // Theme toggle
         if (els.themeToggle) {
@@ -1988,6 +2269,12 @@
         // Sound toggle
         if (els.soundToggle) {
           els.soundToggle.addEventListener('click', toggleSound);
+        }
+        
+        // Auth
+        const googleSigninBtn = document.getElementById('google-signin-btn');
+        if (googleSigninBtn) {
+          googleSigninBtn.addEventListener('click', signInWithGoogle);
         }
         
         // Tab switching
