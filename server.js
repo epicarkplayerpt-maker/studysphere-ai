@@ -1,15 +1,24 @@
-// server.js - StudySphere Backend using Gemini API with model fallback + Google ID token auth
+// server.js - StudySphere Backend using Gemini API with model fallback + Google ID token auth + Postgres logging
 
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const { Pool } = require('pg');
 
 // If your Node version is < 18, uncomment this:
 // const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// =========================
+// Postgres connection
+// =========================
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
 
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
@@ -120,6 +129,7 @@ app.get('/api/health', (req, res) => {
 // =========================
 // Frontend sends: { idToken: "..." } from Google Identity Services.
 // We verify it against Google's tokeninfo endpoint and return { user }.
+// We also upsert into the Postgres users table.
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
@@ -150,17 +160,38 @@ app.post('/api/auth/google', async (req, res) => {
       return res.status(401).json({ error: 'Token audience mismatch' });
     }
 
-    const user = {
-      sub: payload.sub,
-      email: payload.email,
-      name: payload.name || payload.email,
-      picture: payload.picture || null
-    };
+    const googleId = payload.sub;
+    const email = payload.email;
+    const name = payload.name || payload.email;
+    const picture = payload.picture || null;
 
-    // For now we just return the user. Later you can set a session / DB record.
-    console.log('Google user verified:', user.email);
+    const user = { sub: googleId, email, name, picture };
 
-    res.json({ user });
+    // Upsert into users table
+    try {
+      const upsertUserQuery = `
+        INSERT INTO users (google_id, email, name, picture_url)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (google_id)
+        DO UPDATE SET
+          email = EXCLUDED.email,
+          name = EXCLUDED.name,
+          picture_url = EXCLUDED.picture_url,
+          last_seen_at = NOW()
+        RETURNING id;
+      `;
+
+      const result = await pool.query(upsertUserQuery, [googleId, email, name, picture]);
+      const userId = result.rows[0].id;
+
+      console.log('Google user verified and upserted:', email, 'userId:', userId);
+
+      // For now, just return user + userId; later you can issue a JWT
+      res.json({ user: { ...user, userId } });
+    } catch (dbErr) {
+      console.error('Error upserting user into DB:', dbErr);
+      return res.status(500).json({ error: 'Failed to persist user' });
+    }
   } catch (err) {
     console.error('Error in /api/auth/google:', err);
     res.status(500).json({ error: 'Failed to verify Google ID token' });
@@ -169,14 +200,14 @@ app.post('/api/auth/google', async (req, res) => {
 
 // =========================
 // Main chat endpoint (Gemini with fallback)
-// Frontend sends: { messages: [{ role, content }, ...] }
-// We return: { reply, model, usage }
+// Frontend sends: { messages: [{ role, content }, ...], userId }
+// We return: { reply, model, usage } and log to sessions if userId is present.
 // =========================
 app.post('/api/chat', async (req, res) => {
   const startTime = Date.now();
 
   try {
-    const { messages } = req.body;
+    const { messages, userId } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Invalid request: messages array is required' });
@@ -213,6 +244,28 @@ app.post('/api/chat', async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`[Chat] Completed via model ${model} in ${duration}ms`);
 
+    // Log to sessions table if we have a userId
+    if (userId) {
+      try {
+        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        const inputText = lastUserMessage ? lastUserMessage.content : '';
+
+        await pool.query(
+          `INSERT INTO sessions (user_id, tool, subject, input_text, output_text)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            userId,
+            'chat',    // generic tool name for now
+            null,      // subject (you can pass it from the frontend later)
+            inputText,
+            reply
+          ]
+        );
+      } catch (logErr) {
+        console.error('Failed to log chat session:', logErr);
+      }
+    }
+
     return res.json({ reply, model, usage });
   } catch (err) {
     console.error('Chat endpoint error (Gemini fallback):', err);
@@ -220,6 +273,55 @@ app.post('/api/chat', async (req, res) => {
       error: 'AI service is currently unavailable. Please try again in a moment.',
       message: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
+  }
+});
+
+// =========================
+// Simple admin APIs (owner-only)
+// =========================
+function isAdmin(email) {
+  return email === 'epicarkplayerpt@gmail.com';
+}
+
+// For now, use a header to prove admin identity: x-admin-email: your email
+app.get('/api/admin/users', async (req, res) => {
+  const adminEmail = req.header('x-admin-email');
+  if (!adminEmail || !isAdmin(adminEmail)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT id, google_id, email, name, picture_url, created_at, last_seen_at
+      FROM users
+      ORDER BY last_seen_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching admin users:', err);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+app.get('/api/admin/sessions', async (req, res) => {
+  const adminEmail = req.header('x-admin-email');
+  if (!adminEmail || !isAdmin(adminEmail)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT s.id, s.tool, s.subject, s.input_text, s.output_text, s.created_at,
+             u.email, u.name
+      FROM sessions s
+      JOIN users u ON s.user_id = u.id
+      ORDER BY s.created_at DESC
+      LIMIT 500
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching admin sessions:', err);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
   }
 });
 
