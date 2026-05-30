@@ -5,6 +5,10 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const { Pool } = require('pg');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const fs = require('fs');
 
 // If your Node version is < 18, uncomment this:
 // const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
@@ -20,13 +24,18 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+// =========================
 // Middleware
+// =========================
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Multer setup for file uploads
+const upload = multer({ dest: 'uploads/' });
 
 // =========================
 // Config
@@ -95,7 +104,9 @@ async function callGeminiWithFallback(contents) {
 
       const usage = data.usage || null;
 
-      console.log(`[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokens ?? 'N/A'}`);
+      console.log(
+        `[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokens ?? 'N/A'}`
+      );
 
       return { reply, model, usage };
     } catch (err) {
@@ -122,6 +133,71 @@ app.get('/api/health', (req, res) => {
     googleClientConfigured: Boolean(GOOGLE_CLIENT_ID),
     timestamp: new Date().toISOString()
   });
+});
+
+// =========================
+// File upload endpoint
+// =========================
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded.' });
+    }
+
+    const filePath = req.file.path;
+    const mimeType = req.file.mimetype;
+    const originalName = req.file.originalname.toLowerCase();
+    let extractedText = '';
+
+    try {
+      if (
+        mimeType === 'text/plain' ||
+        originalName.endsWith('.txt') ||
+        originalName.endsWith('.md')
+      ) {
+        extractedText = fs.readFileSync(filePath, 'utf8');
+      } else if (mimeType === 'application/pdf' || originalName.endsWith('.pdf')) {
+        const dataBuffer = fs.readFileSync(filePath);
+        const pdfData = await pdfParse(dataBuffer);
+        extractedText = pdfData.text;
+      } else if (
+        mimeType ===
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        originalName.endsWith('.docx')
+      ) {
+        const result = await mammoth.extractRawText({ path: filePath });
+        extractedText = result.value;
+      } else {
+        // Clean up unsupported file
+        fs.unlinkSync(filePath);
+        return res.status(400).json({
+          error:
+            'This file type is not supported yet. Please use .txt, .md, .pdf, or .docx files.'
+        });
+      }
+
+      // Clean up file
+      fs.unlinkSync(filePath);
+
+      if (!extractedText || extractedText.trim().length === 0) {
+        return res.status(400).json({
+          error:
+            'Could not extract any text from this file. It might be empty or contain only images.'
+        });
+      }
+
+      res.json({ text: extractedText });
+    } catch (parseError) {
+      console.error('File parsing error:', parseError);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      res.status(500).json({
+        error: 'Failed to parse file. It may be corrupted or unsupported.'
+      });
+    }
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Server error during file upload.' });
+  }
 });
 
 // =========================
@@ -156,7 +232,12 @@ app.post('/api/auth/google', async (req, res) => {
 
     // Check audience matches our client id
     if (payload.aud !== GOOGLE_CLIENT_ID) {
-      console.error('Google ID token aud mismatch:', payload.aud, 'expected', GOOGLE_CLIENT_ID);
+      console.error(
+        'Google ID token aud mismatch:',
+        payload.aud,
+        'expected',
+        GOOGLE_CLIENT_ID
+      );
       return res.status(401).json({ error: 'Token audience mismatch' });
     }
 
@@ -185,7 +266,7 @@ app.post('/api/auth/google', async (req, res) => {
         googleId || '',
         email || '',
         name || email || '',
-        picture || null,
+        picture || null
       ];
 
       const result = await pool.query(upsertUserQuery, params);
@@ -194,26 +275,27 @@ app.post('/api/auth/google', async (req, res) => {
       if (result.rows.length > 0) {
         userId = result.rows[0].id;
       } else {
-        // Fallback in case RETURNING didn't give a row
         const fallback = await pool.query(
           'SELECT id FROM users WHERE google_id = $1 LIMIT 1',
           [googleId]
         );
         if (fallback.rows.length === 0) {
-          throw new Error('User upsert did not return an id and no user found in fallback.');
+          throw new Error(
+            'User upsert did not return an id and no user found in fallback.'
+          );
         }
         userId = fallback.rows[0].id;
       }
 
       console.log('Google user verified and upserted:', email, 'userId:', userId);
 
-      // For now, just return user + userId; later you can issue a JWT
       res.json({ user: { ...user, userId } });
     } catch (dbErr) {
       console.error('Error upserting user into DB:', dbErr);
       return res.status(500).json({
         error: 'Failed to persist user',
-        detail: process.env.NODE_ENV === 'development' ? dbErr.message : undefined,
+        detail:
+          process.env.NODE_ENV === 'development' ? dbErr.message : undefined
       });
     }
   } catch (err) {
@@ -224,8 +306,6 @@ app.post('/api/auth/google', async (req, res) => {
 
 // =========================
 // Main chat endpoint (Gemini with fallback)
-// Frontend sends: { messages: [{ role, content }, ...], userId }
-// We return: { reply, model, usage } and log to sessions if userId is present.
 // =========================
 app.post('/api/chat', async (req, res) => {
   const startTime = Date.now();
@@ -234,12 +314,16 @@ app.post('/api/chat', async (req, res) => {
     const { messages, userId } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return res.status(400).json({ error: 'Invalid request: messages array is required' });
+      return res
+        .status(400)
+        .json({ error: 'Invalid request: messages array is required' });
     }
 
     if (!GEMINI_API_KEY) {
       console.error('ERROR: GEMINI_API_KEY not set in environment');
-      return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY missing' });
+      return res.status(500).json({
+        error: 'Server configuration error: GEMINI_API_KEY missing'
+      });
     }
 
     const contents = [];
@@ -260,7 +344,9 @@ app.post('/api/chat', async (req, res) => {
     }
 
     if (contents.length === 0) {
-      return res.status(400).json({ error: 'No valid user/assistant messages provided' });
+      return res
+        .status(400)
+        .json({ error: 'No valid user/assistant messages provided' });
     }
 
     const { reply, model, usage } = await callGeminiWithFallback(contents);
@@ -268,22 +354,17 @@ app.post('/api/chat', async (req, res) => {
     const duration = Date.now() - startTime;
     console.log(`[Chat] Completed via model ${model} in ${duration}ms`);
 
-    // Log to sessions table if we have a userId
     if (userId) {
       try {
-        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find(m => m.role === 'user');
         const inputText = lastUserMessage ? lastUserMessage.content : '';
 
         await pool.query(
           `INSERT INTO sessions (user_id, tool, subject, input_text, output_text)
            VALUES ($1, $2, $3, $4, $5)`,
-          [
-            userId,
-            'chat',    // generic tool name for now
-            null,      // subject (you can pass it from the frontend later)
-            inputText,
-            reply
-          ]
+          [userId, 'chat', null, inputText, reply]
         );
       } catch (logErr) {
         console.error('Failed to log chat session:', logErr);
@@ -294,8 +375,10 @@ app.post('/api/chat', async (req, res) => {
   } catch (err) {
     console.error('Chat endpoint error (Gemini fallback):', err);
     return res.status(500).json({
-      error: 'AI service is currently unavailable. Please try again in a moment.',
-      message: process.env.NODE_ENV === 'development' ? err.message : undefined
+      error:
+        'AI service is currently unavailable. Please try again in a moment.',
+      message:
+        process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }
 });
@@ -307,7 +390,6 @@ function isAdmin(email) {
   return email === 'epicarkplayerpt@gmail.com';
 }
 
-// For now, use a header to prove admin identity: x-admin-email: your email
 app.get('/api/admin/users', async (req, res) => {
   const adminEmail = req.header('x-admin-email');
   if (!adminEmail || !isAdmin(adminEmail)) {
