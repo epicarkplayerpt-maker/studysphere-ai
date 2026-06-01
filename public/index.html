@@ -1541,19 +1541,12 @@ callback: onGoogleCredentialResponse,
 auto_select: false,
 cancel_on_tap_outside: true,
 ux_mode: 'popup',
+use_fedcm_for_button: true,
 error_callback: (err) => {
 console.warn('Google Auth Error:', err);
 isGooglePromptActive = false;
 const btn = document.getElementById('manual-google-btn');
 if (btn) btn.disabled = false;
-
-if (err.type === 'popup_closed_by_user' || err.type === 'user_cancel') {
-// User closed it intentionally
-} else if (err.type === ' FedCM' || err.type === 'network_error' || (err.message && err.message.includes('FedCM'))) {
-showToast('error', 'Google Sign-In blocked by browser settings or network. Please try Guest Mode.');
-} else {
-showToast('info', 'Sign-in interrupted. You can try again or use Guest Mode.');
-}
 }
 });
 renderGoogleButton();
@@ -1725,17 +1718,51 @@ showToast('success', 'Welcome, ' + user.name + '!');
 fetchHistoryFromCloud();
 }
 function signOut() {
+const wasGuest = state.user && state.user.email === 'guest@studysphere.local';
+
 if (typeof google !== 'undefined' && google.accounts) {
 try { google.accounts.id.disableAutoSelect(); } catch (e) {}
 }
-state.user = null;
-state.sessionToken = null;
+
+if (wasGuest) {
+// Nuke everything for guest
+Object.values(CONFIG.STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+localStorage.removeItem('ss_has_seen_tutorial');
+
+state.history = { notes: [], flashcards: [], quiz: [], editor: [], translate: [], creative: [] };
+state.binders = [];
+state.streak = { count: 0, lastDate: null };
+state.chatHistory = [
+{ role: 'system', content: 'You are a friendly, helpful AI study assistant for high school and university students. Answer questions clearly, encourage learning, and use HTML for formatting if helpful. Do not use markdown code blocks.' }
+];
+state.activeContext = null;
+
+resetAllOutputs();
+const allTextareas = ['notes-topic', 'fc-notes', 'quiz-topic', 'ed-text', 'tr-text', 'cr-topic'];
+allTextareas.forEach(id => {
+const el = document.getElementById(id);
+if(el) el.value = '';
+});
+updateCharCount();
+renderHistory();
+renderBinders();
+if(els.chatMessages) {
+els.chatMessages.innerHTML = '';
+appendChatBubble('ai', '👋 Hi there! I\'m your AI study assistant. Ask me anything about your coursework, concepts you\'re struggling with, or study tips!');
+}
+if(els.streakCount) els.streakCount.textContent = '0';
+} else {
 localStorage.removeItem(CONFIG.STORAGE_KEYS.USER);
 localStorage.removeItem(CONFIG.STORAGE_KEYS.SESSION);
 localStorage.removeItem('g_state');
+}
+
+state.user = null;
+state.sessionToken = null;
+
 updateAuthUI();
 setAuthenticated(false);
-showToast('info', 'Signed out successfully');
+showToast('info', wasGuest ? 'Guest session wiped clean. See you next time!' : 'Signed out successfully');
 }
 function loadPersistedData() {
 const soundPref = localStorage.getItem(CONFIG.STORAGE_KEYS.SOUND);
@@ -1767,7 +1794,7 @@ delete drafts[id];
 saveToStorage(CONFIG.STORAGE_KEYS.DRAFTS, drafts);
 }
 async function syncHistoryToCloud() {
-if (!state.user || !state.user.userId || !state.sessionToken || state.user.userId.startsWith('guest_')) return;
+if (!state.user || !state.user.userId || !state.sessionToken || state.user.email === 'guest@studysphere.local') return;
 try {
 await apiFetch('/api/history', {
 method: 'POST',
@@ -1781,7 +1808,13 @@ tutorialSeen: localStorage.getItem('ss_has_seen_tutorial') === 'true'
 } catch (e) { console.warn('Cloud sync unavailable'); }
 }
 async function fetchHistoryFromCloud() {
-if (!state.user || !state.user.userId || !state.sessionToken || state.user.userId.startsWith('guest_')) return;
+if (!state.user || !state.user.userId || !state.sessionToken) return;
+
+if (state.user.email === 'guest@studysphere.local') {
+setTimeout(showTutorial, 800);
+return;
+}
+
 try {
 const res = await apiFetch(`/api/history?userId=${state.user.userId}`);
 if (res.ok) {
@@ -2918,14 +2951,62 @@ els.shortcutsOverlay.classList.toggle('open', isOpen);
 }
 let tutorialStep = 0;
 const tutorialSteps = [
-{ icon: "🎓", title: "Welcome to StudySphere!", desc: "Your AI-powered study workspace. Let's take a quick interactive tour.", action: null },
-{ icon: "✍️", title: "Smart Context Generation", desc: "Let's try the Notes tool. We'll focus the input area for you. Just type a topic and hit Generate!", action: () => { switchMode('notes'); setTimeout(() => { const ta = document.getElementById('notes-topic'); if(ta) { ta.focus(); ta.placeholder = "Try typing: 'Quantum Physics basics'..."; } }, 300); } },
-{ icon: "🔗", title: "Seamless Tool Switching", desc: "The AI remembers your context. Let's switch to Flashcards to see how it adapts your previous topic automatically.", action: () => { switchMode('flashcards'); } },
-{ icon: "🃏", title: "Interactive Review", desc: "Use your keyboard! Press 'Space' to flip cards, and Arrow Keys to navigate. It's designed for flow state.", action: null },
-{ icon: "☁️", title: "Cloud Sync & Binders", desc: "Save your best outputs to Binders. They sync securely to your Google account across all desktop devices.", action: null },
-{ icon: "🤖", title: "Your AI Sidekick", desc: "Stuck? Open the chat assistant anytime for quick explanations. Let's open it now!", action: () => { if(!document.getElementById('chat-window').classList.contains('open')) { toggleChat(); } } }
+{
+icon: "✨",
+title: "Welcome to StudySphere",
+desc: "You've just entered your AI-powered command center for deep learning. Let's take a quick 60-second tour to master the tools that will save you hours of study time.",
+action: null
+},
+{
+icon: "🧠",
+title: "1. Context is Everything",
+desc: "Start in the Notes tab. Type any topic and hit Generate. The AI doesn't just answer; it builds a foundational understanding that it will remember for your entire session.",
+action: () => {
+switchMode('notes');
+setTimeout(() => {
+const ta = document.getElementById('notes-topic');
+if(ta) {
+ta.focus();
+ta.placeholder = "Try: 'The causes of the French Revolution' or 'Quantum Entanglement'...";
+}
+}, 300);
+}
+},
+{
+icon: "🔄",
+title: "2. The Magic of Mode Switching",
+desc: "Here is the best part: Switch to Flashcards or Quiz now. You don't need to re-type your prompt! The AI automatically uses your previous Notes to generate perfectly tailored study materials.",
+action: () => {
+switchMode('flashcards');
+setTimeout(() => {
+const ta = document.getElementById('fc-notes');
+if(ta) ta.placeholder = "Just click Generate! The AI already knows your topic...";
+}, 300);
+}
+},
+{
+icon: "🧘",
+title: "3. Deep Work & Active Recall",
+desc: "Look at the toolbar above your AI output. Use 'Recall' to blur answers for self-testing, 'ELI5' to simplify complex jargon, or 'Zen' mode to eliminate all distractions and focus purely on reading.",
+action: null
+},
+{
+icon: "📚",
+title: "4. Build Your Knowledge Binders",
+desc: "Generated the perfect study guide? Click the 'Save' icon to add it to your Binders. It's your personal, searchable textbook that grows with you and syncs across devices when signed in.",
+action: null
+},
+{
+icon: "💬",
+title: "5. Your 24/7 AI Tutor",
+desc: "Stuck on a concept? Open the chat bubble in the bottom right. It has access to your current workspace context and can explain things step-by-step, or even quiz you on the fly.",
+action: () => {}
+}
 ];
 function showTutorial() {
+const existing = document.getElementById('tutorial-overlay');
+if (existing) existing.remove();
+
 tutorialStep = 0;
 const overlay = document.createElement('div');
 overlay.id = 'tutorial-overlay';
