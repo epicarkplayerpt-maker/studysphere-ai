@@ -1,5 +1,4 @@
-// server.js - StudySphere Backend using Gemini API with model fallback + Google ID token auth + Postgres logging + file upload
-
+// server.js - StudySphere Ultimate Backend (Secured, Robust, Future-Proof)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -9,467 +8,476 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const fs = require('fs');
+const fsPromises = require('fs/promises');
+const crypto = require('crypto');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { OAuth2Client } = require('google-auth-library');
+const jwt = require('jsonwebtoken');
 
-// If your Node version is < 18, uncomment this:
-// const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+// Fallback for older Node versions
+if (typeof fetch !== 'function') {
+  console.error('Global fetch is not available. Please upgrade to Node 18+ or install node-fetch.');
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // =========================
-// Postgres connection
+// 1. Security & Middleware (Helmet CSP)
+// =========================
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'", "'unsafe-inline'", "'unsafe-eval'",
+          "https://accounts.google.com", "https://apis.google.com",
+          "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com",
+          "https://ogs.google.com", "https://www.googleapis.com"
+        ],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com", "https://cdn.jsdelivr.net", "https://ogs.google.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:"],
+        imgSrc: ["'self'", "data:", "http:", "https:", "blob:", "https://lh3.googleusercontent.com", "https://*.googleusercontent.com"],
+        frameSrc: ["'self'", "https://accounts.google.com", "https://apis.google.com", "https://ogs.google.com", "https://www.googleapis.com"],
+        connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "https://ogs.google.com", "ws:", "wss:"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"]
+      }
+    }
+  })
+);
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5500', 'http://localhost:5500'];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) callback(null, true);
+    else callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+app.use('/api/', apiLimiter);
+
+// =========================
+// 2. Postgres connection & Auto-Init
 // =========================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
-// =========================
-// Middleware
-// =========================
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+const initDatabase = async () => {
+  const queries = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      google_id VARCHAR(255) UNIQUE NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      name VARCHAR(255),
+      picture_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      tool VARCHAR(50),
+      subject VARCHAR(255),
+      input_text TEXT,
+      output_text TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS user_data (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      data JSONB NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`
+  ];
+  
+  try {
+    for (const q of queries) await pool.query(q);
+    console.log('[DB] Tables verified/initialized successfully.');
+  } catch (err) {
+    console.error('[DB] Failed to initialize tables:', err);
+  }
+};
 
-// Multer setup for file uploads
-const upload = multer({ dest: 'uploads/' });
-
 // =========================
-// Config
+// 3. Config & Auth Setup
 // =========================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'epicarkplayerpt@gmail.com').split(',');
 
-// Model priority list: best -> worst for Gemini
-// The last model is an emergency backup only.
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedExts = ['.txt', '.md', '.pdf', '.docx'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedExts.includes(ext)) cb(null, true);
+    else cb(new Error('Invalid file type. Only .txt, .md, .pdf, and .docx are allowed.'));
+  }
+});
+
+// UPDATED: Routed to gemini-3.1-flash-lite as requested
 const GEMINI_MODEL_FALLBACKS = [
-  'gemini-3.5-flash',
-  'gemini-3.1-pro',
-  'gemini-3.1-flash',
   'gemini-3.1-flash-lite',
-  'gemini-2.5-flash' // emergency only, used if everything else fails
+  'gemini-2.5-flash',
+  'gemini-2.0-flash'
 ];
 
 // =========================
-// Gemini helpers
+// 4. Auth Middleware (Fixed for Guest Mode)
 // =========================
-async function callGeminiModelOnce(model, contents) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  // If no token or invalid token (e.g., Guest Mode mock token), allow as guest instead of blocking
+  if (!token) {
+    req.user = { userId: null, email: 'guest', isGuest: true };
+    return next();
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      // Gracefully handle frontend's Guest/Offline mock tokens
+      req.user = { userId: null, email: 'guest', isGuest: true };
+      return next();
+    }
+    req.user = user;
+    next();
+  });
+};
+
+const requireAdmin = (req, res, next) => {
+  if (!req.user || !ADMIN_EMAILS.includes(req.user.email)) {
+    return res.status(403).json({ error: 'Forbidden: Admin access only' });
+  }
+  next();
+};
+
+// =========================
+// 5. Gemini AI Helpers
+// =========================
+async function callGeminiModelOnce(model, contents, systemInstruction) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const payload = {
+    contents,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 8192 
+    }
+  };
+
+  // Properly inject system prompt for Gemini
+  if (systemInstruction && systemInstruction.trim()) {
+    payload.systemInstruction = {
+      parts: [{ text: systemInstruction.trim() }]
+    };
+  }
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'x-goog-api-key': GEMINI_API_KEY
     },
-    body: JSON.stringify({
-      contents,
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048
-      }
-    })
+    body: JSON.stringify(payload)
   });
 
   return response;
 }
 
-async function callGeminiWithFallback(contents) {
+async function callGeminiWithFallback(contents, systemInstruction) {
   const errors = [];
 
   for (const model of GEMINI_MODEL_FALLBACKS) {
-    const isEmergency = model === 'gemini-2.5-flash';
     try {
-      const response = await callGeminiModelOnce(model, contents);
+      const response = await callGeminiModelOnce(model, contents, systemInstruction);
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Gemini API error (${response.status}) with model ${model}:`, errorText);
-
         errors.push({ model, status: response.status, body: errorText });
-
-        // If auth fails, no point trying further models; break hard
-        if (response.status === 401) {
-          throw new Error(`Gemini authentication failed with model ${model}.`);
-        }
-
-        // Non-OK response: try next model in chain
+        if (response.status === 401 || response.status === 403) throw new Error(`Gemini auth failed.`);
         continue;
       }
 
       const data = await response.json();
+      const reply = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join(' ').trim() || 'No response was generated.';
+      const usage = data.usageMetadata || data.usage || null;
 
-      const reply =
-        data?.candidates?.[0]?.content?.parts
-          ?.map(p => p.text || '')
-          .join(' ')
-          .trim() || 'No response was generated.';
-
-      const usage = data.usage || null;
-
-      console.log(
-        `[Chat] Provider: Gemini, Model: ${model}, Emergency: ${isEmergency}, Tokens: ${usage?.totalTokens ?? 'N/A'}`
-      );
-
+      console.log(`[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokenCount ?? 'N/A'}`);
       return { reply, model, usage };
     } catch (err) {
       console.error(`Gemini network/parse error with model ${model}:`, err);
       errors.push({ model, error: err.message });
-
-      // If this was the emergency model and it failed, we stop.
-      if (isEmergency) break;
-
-      // Otherwise, try the next model in the chain.
       continue;
     }
   }
 
-  console.error('All Gemini models failed in fallback chain:', errors);
-  throw new Error('All Gemini models are currently unavailable. Please try again later.');
+  throw new Error('All Gemini models are currently unavailable.');
 }
 
 // =========================
-// Health check
+// 6. API Endpoints
 // =========================
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     provider: 'gemini',
     primaryModel: GEMINI_MODEL_FALLBACKS[0],
-    fallbackChain: GEMINI_MODEL_FALLBACKS,
     geminiApiKeyConfigured: Boolean(GEMINI_API_KEY),
     googleClientConfigured: Boolean(GOOGLE_CLIENT_ID),
     timestamp: new Date().toISOString()
   });
 });
 
-// =========================
-// File upload endpoint
-// =========================
 app.post('/api/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+  const filePath = req.file.path;
+  const mimeType = req.file.mimetype;
+  const originalName = req.file.originalname.toLowerCase();
+  let extractedText = '';
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded.' });
+    if (mimeType === 'text/plain' || originalName.endsWith('.txt') || originalName.endsWith('.md')) {
+      extractedText = await fsPromises.readFile(filePath, 'utf8');
+    } else if (mimeType === 'application/pdf' || originalName.endsWith('.pdf')) {
+      const dataBuffer = await fsPromises.readFile(filePath);
+      const pdfData = await pdfParse(dataBuffer);
+      extractedText = pdfData.text;
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || originalName.endsWith('.docx')) {
+      const result = await mammoth.extractRawText({ path: filePath });
+      extractedText = result.value;
+    } else {
+      throw new Error('Unsupported file type.');
     }
 
-    const filePath = req.file.path;
-    const mimeType = req.file.mimetype;
-    const originalName = req.file.originalname.toLowerCase();
-    let extractedText = '';
-
-    try {
-      if (
-        mimeType === 'text/plain' ||
-        originalName.endsWith('.txt') ||
-        originalName.endsWith('.md')
-      ) {
-        extractedText = fs.readFileSync(filePath, 'utf8');
-      } else if (mimeType === 'application/pdf' || originalName.endsWith('.pdf')) {
-        const dataBuffer = fs.readFileSync(filePath);
-        const pdfData = await pdfParse(dataBuffer);
-        extractedText = pdfData.text;
-      } else if (
-        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        originalName.endsWith('.docx')
-      ) {
-        const result = await mammoth.extractRawText({ path: filePath });
-        extractedText = result.value;
-      } else {
-        fs.unlinkSync(filePath);
-        return res.status(400).json({
-          error:
-            'This file type is not supported yet. Please use .txt, .md, .pdf, or .docx files.'
-        });
-      }
-
-      fs.unlinkSync(filePath);
-
-      if (!extractedText || extractedText.trim().length === 0) {
-        return res.status(400).json({
-          error:
-            'Could not extract any text from this file. It might be empty or contain only images.'
-        });
-      }
-
-      res.json({ text: extractedText });
-    } catch (parseError) {
-      console.error('File parsing error:', parseError);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      res.status(500).json({
-        error: 'Failed to parse file. It may be corrupted or unsupported.'
-      });
+    if (!extractedText || extractedText.trim().length === 0) {
+      return res.status(400).json({ error: 'Could not extract text. File might be empty or image-based.' });
     }
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Server error during file upload.' });
+
+    res.json({ text: extractedText });
+  } catch (parseError) {
+    console.error('File parsing error:', parseError);
+    res.status(500).json({ error: 'Failed to parse file.' });
+  } finally {
+    try { await fsPromises.unlink(filePath); } catch (e) { /* Ignore */ }
   }
 });
 
-// =========================
-// Google ID token auth
-// =========================
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
+    if (!googleClient) return res.status(500).json({ error: 'Server auth misconfiguration' });
 
-    if (!idToken) {
-      return res.status(400).json({ error: 'Missing idToken' });
-    }
-    if (!GOOGLE_CLIENT_ID) {
-      console.error('GOOGLE_CLIENT_ID not set in environment');
-      return res.status(500).json({ error: 'Server auth misconfiguration' });
-    }
-
-    const verifyRes = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-    );
-
-    if (!verifyRes.ok) {
-      const text = await verifyRes.text();
-      console.error('Google token verification failed:', verifyRes.status, text);
-      return res.status(401).json({ error: 'Invalid Google ID token' });
-    }
-
-    const payload = await verifyRes.json();
-
-    if (payload.aud !== GOOGLE_CLIENT_ID) {
-      console.error(
-        'Google ID token aud mismatch:',
-        payload.aud,
-        'expected',
-        GOOGLE_CLIENT_ID
-      );
-      return res.status(401).json({ error: 'Token audience mismatch' });
-    }
-
+    const ticket = await googleClient.verifyIdToken({
+      idToken: idToken,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    
+    const payload = ticket.getPayload();
     const googleId = payload.sub;
     const email = payload.email;
     const name = payload.name || payload.email;
     const picture = payload.picture || null;
 
-    const user = { sub: googleId, email, name, picture };
+    const upsertUserQuery = `
+      INSERT INTO users (google_id, email, name, picture_url)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (google_id)
+      DO UPDATE SET
+        email = EXCLUDED.email,
+        name = EXCLUDED.name,
+        picture_url = EXCLUDED.picture_url,
+        last_seen_at = NOW()
+      RETURNING id;
+    `;
 
-    try {
-      const upsertUserQuery = `
-        INSERT INTO users (google_id, email, name, picture_url)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (google_id)
-        DO UPDATE SET
-          email = EXCLUDED.email,
-          name = EXCLUDED.name,
-          picture_url = EXCLUDED.picture_url,
-          last_seen_at = NOW()
-        RETURNING id;
-      `;
+    const result = await pool.query(upsertUserQuery, [googleId, email, name, picture]);
+    const userId = result.rows[0].id;
 
-      const params = [
-        googleId || '',
-        email || '',
-        name || email || '',
-        picture || null
-      ];
+    const sessionToken = jwt.sign(
+      { userId, email, name }, 
+      JWT_SECRET, 
+      { expiresIn: '7d' }
+    );
 
-      const result = await pool.query(upsertUserQuery, params);
-
-      let userId;
-      if (result.rows.length > 0) {
-        userId = result.rows[0].id;
-      } else {
-        const fallback = await pool.query(
-          'SELECT id FROM users WHERE google_id = $1 LIMIT 1',
-          [googleId]
-        );
-        if (fallback.rows.length === 0) {
-          throw new Error(
-            'User upsert did not return an id and no user found in fallback.'
-          );
-        }
-        userId = fallback.rows[0].id;
-      }
-
-      console.log('Google user verified and upserted:', email, 'userId:', userId);
-
-      res.json({ user: { ...user, userId } });
-    } catch (dbErr) {
-      console.error('Error upserting user into DB:', dbErr);
-      return res.status(500).json({
-        error: 'Failed to persist user',
-        detail:
-          process.env.NODE_ENV === 'development' ? dbErr.message : undefined
-      });
-    }
+    res.json({ 
+      user: { userId, sub: googleId, email, name, picture },
+      sessionToken 
+    });
   } catch (err) {
     console.error('Error in /api/auth/google:', err);
-    res.status(500).json({ error: 'Failed to verify Google ID token' });
+    res.status(401).json({ error: 'Invalid Google ID token or DB error' });
   }
 });
 
-// =========================
-// Main chat endpoint (Gemini with fallback)
-// =========================
-app.post('/api/chat', async (req, res) => {
-  const startTime = Date.now();
-
+app.post('/api/chat', authenticateToken, async (req, res) => {
   try {
-    const { messages, userId } = req.body;
+    const { messages } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid request: messages array is required' });
+      return res.status(400).json({ error: 'Invalid request: messages array is required' });
     }
-
-    if (!GEMINI_API_KEY) {
-      console.error('ERROR: GEMINI_API_KEY not set in environment');
-      return res.status(500).json({
-        error: 'Server configuration error: GEMINI_API_KEY missing'
-      });
-    }
+    if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY missing' });
 
     const contents = [];
-    let systemPrefix = '';
+    let systemInstruction = '';
 
+    // Properly separate System Instructions from User/Model turns
     for (const msg of messages) {
       if (!msg.role || !msg.content) continue;
-
       if (msg.role === 'system') {
-        systemPrefix += msg.content + '\n\n';
+        systemInstruction += msg.content + '\n\n';
       } else {
         contents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: (systemPrefix ? systemPrefix : '') + msg.content }]
+          parts: [{ text: msg.content }]
         });
-        systemPrefix = '';
       }
     }
 
-    if (contents.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'No valid user/assistant messages provided' });
-    }
+    const { reply, model, usage } = await callGeminiWithFallback(contents, systemInstruction);
 
-    const { reply, model, usage } = await callGeminiWithFallback(contents);
-
-    const duration = Date.now() - startTime;
-    console.log(`[Chat] Completed via model ${model} in ${duration}ms`);
-
-    if (userId) {
+    // Only log to DB if user is authenticated (prevents Foreign Key errors for Guests)
+    if (req.user.userId) {
       try {
-        const lastUserMessage = [...messages]
-          .reverse()
-          .find(m => m.role === 'user');
-        const inputText = lastUserMessage ? lastUserMessage.content : '';
-
+        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        const inputText = lastUserMessage ? lastUserMessage.content.substring(0, 10000) : '';
+        const outputText = reply.substring(0, 10000);
+        
         await pool.query(
-          `INSERT INTO sessions (user_id, tool, subject, input_text, output_text)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [userId, 'chat', null, inputText, reply]
+          `INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+          [req.user.userId, 'chat', null, inputText, outputText]
         );
-      } catch (logErr) {
-        console.error('Failed to log chat session:', logErr);
-      }
+      } catch (logErr) { console.error('Failed to log chat session:', logErr); }
     }
 
-    return res.json({ reply, model, usage });
+    res.json({ reply, model, usage });
   } catch (err) {
-    console.error('Chat endpoint error (Gemini fallback):', err);
-    return res.status(500).json({
-      error:
-        'AI service is currently unavailable. Please try again in a moment.',
-      message:
-        process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    console.error('Chat endpoint error:', err);
+    res.status(500).json({ error: 'AI service is currently unavailable.' });
   }
 });
 
-// =========================
-// Simple admin APIs (owner-only)
-// =========================
-function isAdmin(email) {
-  return email === 'epicarkplayerpt@gmail.com';
-}
-
-app.get('/api/admin/users', async (req, res) => {
-  const adminEmail = req.header('x-admin-email');
-  if (!adminEmail || !isAdmin(adminEmail)) {
-    return res.status(403).json({ error: 'Forbidden' });
+app.post('/api/history', authenticateToken, async (req, res) => {
+  if (req.user.isGuest) return res.json({ success: true }); // Skip DB save for guests
+  try {
+    const userId = req.user.userId;
+    const { history, binders, tutorialSeen } = req.body;
+    const data = { history, binders, tutorialSeen };
+    
+    await pool.query(
+      `INSERT INTO user_data (user_id, data, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      [userId, data]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving user data:', err);
+    res.status(500).json({ error: 'Failed to save data' });
   }
+});
 
+app.get('/api/history', authenticateToken, async (req, res) => {
+  if (req.user.isGuest) return res.json({ history: {}, binders: [], tutorialSeen: false });
+  try {
+    const userId = req.user.userId;
+    const result = await pool.query('SELECT data FROM user_data WHERE user_id = $1', [userId]);
+    if (result.rows.length > 0) {
+      res.json(result.rows[0].data);
+    } else {
+      res.json({ history: {}, binders: [], tutorialSeen: false });
+    }
+  } catch (err) {
+    console.error('Error fetching user data:', err);
+    res.status(500).json({ error: 'Failed to fetch data' });
+  }
+});
+
+// Secured Admin Endpoints
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT id, google_id, email, name, picture_url, created_at, last_seen_at FROM users ORDER BY last_seen_at DESC`);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: 'Failed to fetch users' }); }
+});
+
+app.get('/api/admin/sessions', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, google_id, email, name, picture_url, created_at, last_seen_at
-      FROM users
-      ORDER BY last_seen_at DESC
+      SELECT s.id, s.tool, s.subject, s.input_text, s.output_text, s.created_at, u.email, u.name
+      FROM sessions s JOIN users u ON s.user_id = u.id ORDER BY s.created_at DESC LIMIT 500
     `);
     res.json(result.rows);
-  } catch (err) {
-    console.error('Error fetching admin users:', err);
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Failed to fetch sessions' }); }
 });
 
-app.get('/api/admin/sessions', async (req, res) => {
-  const adminEmail = req.header('x-admin-email');
-  if (!adminEmail || !isAdmin(adminEmail)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  try {
-    const result = await pool.query(`
-      SELECT s.id, s.tool, s.subject, s.input_text, s.output_text, s.created_at,
-             u.email, u.name
-      FROM sessions s
-      JOIN users u ON s.user_id = u.id
-      ORDER BY s.created_at DESC
-      LIMIT 500
-    `);
-    res.json(result.rows);
-  } catch (err) {
-    console.error('Error fetching admin sessions:', err);
-    res.status(500).json({ error: 'Failed to fetch sessions' });
-  }
-});
-
-// =========================
-// SPA catch-all route
-// =========================
+// SPA catch-all
 app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// =========================
-// Error handling middleware
-// =========================
+// Global Error Handler
 app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'An unexpected error occurred' });
 });
 
 // =========================
-// Start server
+// 7. Start server
 // =========================
-app.listen(PORT, () => {
-  console.log(`
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║          StudySphere AI Workspace - Backend Server         ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Server running on: http://localhost:${PORT.toString().padEnd(27)}║
 ║  Provider:         Gemini (fallback chain)                 ║
-║  Models (priority): ${GEMINI_MODEL_FALLBACKS.join('  >  ').padEnd(34)}║
-║  GEMINI_API_KEY:   ${GEMINI_API_KEY ? '✓ Configured' : '✗ Missing (check .env)'}${GEMINI_API_KEY ? '                            ' : '                     '}║
-║  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID ? '✓ Configured' : '✗ Missing (check .env)'}${GOOGLE_CLIENT_ID ? '                            ' : '                     '}║
+║  Primary Model:    ${GEMINI_MODEL_FALLBACKS[0].padEnd(27)}║
+║  GEMINI_API_KEY:   ${GEMINI_API_KEY ? '✓ Configured' : '✗ Missing (check .env)'}                            ║
+║  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID ? '✓ Configured' : '✗ Missing (check .env)'}                            ║
+║  Security:         JWT Auth, Rate Limit, Helmet, CORS      ║
 ╚════════════════════════════════════════════════════════════╝
-  `);
-
-  if (!GEMINI_API_KEY) {
-    console.warn('\n⚠️  WARNING: GEMINI_API_KEY is not set!');
-    console.warn('   Create a .env file with: GEMINI_API_KEY=your_key_here\n');
-  }
-  if (!GOOGLE_CLIENT_ID) {
-    console.warn('\n⚠️  WARNING: GOOGLE_CLIENT_ID is not set!');
-    console.warn('   Create a .env file with: GOOGLE_CLIENT_ID=your_client_id_here\n');
-  }
+    `);
+  });
 });
 
 module.exports = app;
