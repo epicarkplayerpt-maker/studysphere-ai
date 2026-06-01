@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>StudySphere | AI Study Workspace</title>
 <meta name="description" content="Your AI-powered study companion for notes, flashcards, editing, translation, and exam practice.">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://ogs.google.com https://www.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://ogs.google.com; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:; img-src 'self' data: https: blob: https://*.googleusercontent.com https://lh3.googleusercontent.com; frame-src 'self' https://accounts.google.com https://apis.google.com https://ogs.google.com https://www.googleapis.com; connect-src 'self' https://generativelanguage.googleapis.com https://oauth2.googleapis.com https://accounts.google.com https://*.googleusercontent.com https://*.googleapis.com https://cdnjs.cloudflare.com https://ogs.google.com ws: wss:;">
@@ -48,6 +48,10 @@
 --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 --transition-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 --fluid-bezier: cubic-bezier(0.22, 1, 0.36, 1);
+--safe-top: env(safe-area-inset-top);
+--safe-bottom: env(safe-area-inset-bottom);
+--safe-left: env(safe-area-inset-left);
+--safe-right: env(safe-area-inset-right);
 }
 [data-theme="dark"] {
 --bg: #0B1120;
@@ -72,7 +76,7 @@
 --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6);
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; font-size: clamp(14px, 1.5vw, 16px); }
 body {
 font-family: var(--font-sans);
 background: var(--bg);
@@ -90,6 +94,19 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 a { color: var(--accent); text-decoration: none; transition: color var(--transition-fast); }
 a:hover { color: var(--accent-hover); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+/* Touch Device Optimizations (Apple HIG & WCAG Compliance) */
+@media (hover: none) and (pointer: coarse) {
+  .btn, .toolbar-btn, .icon-btn, .tab-btn, .fc-nav-btn, .quiz-conf-btn, .auth-signin-btn, .auth-signout-btn, .google-signin-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .btn:active, .toolbar-btn:active, .icon-btn:active, .tab-btn:active {
+    transform: scale(0.96);
+    transition: transform 0.1s;
+  }
+}
+
 body:not(.authenticated) .workspace,
 body:not(.authenticated) .chat-widget,
 body:not(.authenticated) .hero,
@@ -101,7 +118,7 @@ opacity: 1;
 pointer-events: auto;
 }
 header {
-padding: 1rem 2rem;
+padding: calc(1rem + var(--safe-top)) 2rem 1rem;
 border-bottom: 1px solid var(--border);
 display: flex;
 justify-content: space-between;
@@ -270,6 +287,8 @@ border: 1px solid var(--border);
 box-shadow: var(--shadow-sm);
 overflow-x: auto;
 scrollbar-width: none;
+scroll-snap-type: x mandatory;
+-webkit-overflow-scrolling: touch;
 }
 .mode-tabs::-webkit-scrollbar { display: none; }
 .tab-btn {
@@ -290,6 +309,7 @@ justify-content: center;
 gap: 0.5rem;
 position: relative;
 overflow: hidden;
+scroll-snap-align: start;
 }
 .tab-btn:hover {
 color: var(--text);
@@ -326,7 +346,7 @@ padding: 1.75rem;
 box-shadow: var(--shadow-sm);
 display: flex;
 flex-direction: column;
-min-height: 600px;
+min-height: 50vh;
 transition: all 0.4s var(--fluid-bezier);
 position: relative;
 overflow: hidden;
@@ -698,7 +718,7 @@ gap: 1rem; z-index: 10; animation: fadeIn 0.3s ease;
 }
 [data-theme="dark"] .quiz-confidence-overlay { background: rgba(15, 23, 42, 0.95); }
 .quiz-confidence-overlay h4 { font-size: 1rem; font-weight: 600; color: var(--text); }
-.quiz-confidence-btns { display: flex; gap: 0.75rem; }
+.quiz-confidence-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
 .quiz-conf-btn {
 padding: 0.6rem 1.2rem; border-radius: var(--radius-full);
 font-weight: 600; font-size: 0.85rem; border: 1.5px solid var(--border);
@@ -771,7 +791,7 @@ display: none !important;
 margin-top: 0 !important;
 margin-bottom: 0 !important;
 }
-.chat-widget { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 900; }
+.chat-widget { position: fixed; bottom: calc(1.5rem + var(--safe-bottom)); right: calc(1.5rem + var(--safe-right)); z-index: 900; }
 .chat-toggle {
 width: 60px; height: 60px; border-radius: 50%;
 background: linear-gradient(135deg, var(--accent), #7C3AED);
@@ -839,7 +859,7 @@ font-size: 0.9rem; line-height: 1.5; animation: bubblePop 0.4s var(--fluid-bezie
 0%, 60%, 100% { transform: scale(0.6); opacity: 0.5; }
 30% { transform: scale(1); opacity: 1; }
 }
-.chat-input-area { padding: 1rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; background: var(--bg-alt); }
+.chat-input-area { padding: 1rem; padding-bottom: calc(1rem + var(--safe-bottom)); border-top: 1px solid var(--border); display: flex; gap: 0.5rem; background: var(--bg-alt); }
 .chat-input {
 flex: 1; padding: 0.75rem 1rem; border: 1.5px solid var(--border);
 border-radius: var(--radius-full); background: var(--bg); color: var(--text);
@@ -896,7 +916,7 @@ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overf
 }
 .binder-name { font-weight: 600; color: var(--text); margin-bottom: 0.25rem; }
 .toast-container {
-position: fixed; top: 5rem; right: 1.5rem; z-index: 1000;
+position: fixed; top: calc(5rem + var(--safe-top)); right: calc(1.5rem + var(--safe-right)); z-index: 1000;
 display: flex; flex-direction: column; gap: 0.75rem; pointer-events: none;
 }
 .toast {
@@ -927,7 +947,7 @@ transform-origin: left; animation: toastProgress 4s linear forwards;
 }
 @keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 footer {
-text-align: center; padding: 2rem 1.5rem; color: var(--text-muted);
+text-align: center; padding: 2rem 1.5rem calc(2rem + var(--safe-bottom)); color: var(--text-muted);
 font-size: 0.85rem; border-top: 1px solid var(--border); margin-top: auto;
 }
 body.zen-mode header, body.zen-mode footer, body.zen-mode .input-panel,
@@ -936,7 +956,7 @@ body.zen-mode .workspace { padding: 2rem; }
 body.zen-mode .workspace-grid { grid-template-columns: 1fr; max-width: 900px; margin: 0 auto; }
 body.zen-mode .output-panel { min-height: 100vh; border: none; box-shadow: none; background: var(--bg); }
 .zen-exit-btn {
-position: fixed; top: 1.5rem; right: 1.5rem; z-index: 1000;
+position: fixed; top: calc(1.5rem + var(--safe-top)); right: calc(1.5rem + var(--safe-right)); z-index: 1000;
 width: 48px; height: 48px; border-radius: 50%;
 background: var(--bg-alt); border: 1px solid var(--border);
 color: var(--text-secondary); display: none;
@@ -1001,7 +1021,7 @@ body * { visibility: hidden; }
 .panel { min-height: auto; }
 }
 @media (max-width: 768px) {
-header { padding: 1rem; }
+header { padding: calc(0.75rem + var(--safe-top)) 1rem 0.75rem; }
 .brand-text { display: none; }
 .workspace { padding: 1rem; }
 .mode-tabs { gap: 0.25rem; padding: 0.375rem; }
@@ -1012,7 +1032,16 @@ header { padding: 1rem; }
 .input-footer { flex-direction: column; align-items: stretch; gap: 1rem; }
 .actions { width: 100%; }
 .actions .btn { flex: 1; }
-.chat-window { width: calc(100vw - 2rem); right: -0.5rem; height: 70vh; }
+.chat-window { 
+  width: 100vw; 
+  height: 100vh; 
+  height: 100dvh; 
+  bottom: 0; 
+  right: 0; 
+  border-radius: 0; 
+  transform: translateY(100%); 
+}
+.chat-window.open { transform: translateY(0); }
 .history-panel, .binder-panel { max-width: 100%; }
 .pomodoro-pill span { display: none; }
 .pomodoro-pill { padding: 0.5rem; }
@@ -1424,6 +1453,18 @@ let initialOutputStates = {};
 let defaultPlaceholders = {};
 let isGooglePromptActive = false;
 
+function debounce(func, wait) {
+let timeout;
+return function executedFunction(...args) {
+const later = () => {
+clearTimeout(timeout);
+func(...args);
+};
+clearTimeout(timeout);
+timeout = setTimeout(later, wait);
+};
+}
+
 async function apiFetch(url, options = {}) {
 const token = state.sessionToken || localStorage.getItem(CONFIG.STORAGE_KEYS.SESSION);
 const headers = { ...(options.headers || {}) };
@@ -1521,7 +1562,6 @@ document.getElementById('auth-signin-btn').addEventListener('click', showAuthGat
 }
 function showAuthGate() { document.getElementById('auth-gate').classList.add('visible'); }
 function hideAuthGate() { document.getElementById('auth-gate').classList.remove('visible'); }
-
 function initGoogleAuth() {
 if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
 if (!window.googleAuthRetries) window.googleAuthRetries = 0;
@@ -1533,7 +1573,6 @@ showGoogleFallback();
 }
 return;
 }
-
 try {
 google.accounts.id.initialize({
 client_id: GOOGLE_CLIENT_ID,
@@ -1555,13 +1594,10 @@ console.warn('Google Auth failed to initialize:', e);
 showGoogleFallback();
 }
 }
-
 function renderGoogleButton() {
 const container = document.getElementById('google-btn-container');
 if (!container) return;
-
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
 container.innerHTML = `
 <button id="manual-google-btn" class="google-signin-btn" style="width: 100%; justify-content: center; background: var(--bg-alt); color: var(--text); border: 1.5px solid var(--border); box-shadow: var(--shadow-sm);">
 <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" style="width: 20px; height: 20px;">
@@ -1577,7 +1613,6 @@ Sign In with Google Account
 </div>
 </div>
 `;
-
 if (isMobile) {
 const googleBtn = document.getElementById('manual-google-btn');
 if (googleBtn) {
@@ -1585,13 +1620,11 @@ googleBtn.style.opacity = '0.5';
 googleBtn.style.pointerEvents = 'none';
 }
 }
-
 document.getElementById('manual-google-btn').addEventListener('click', () => {
 if (isGooglePromptActive) return;
 isGooglePromptActive = true;
 const btn = document.getElementById('manual-google-btn');
 if (btn) btn.disabled = true;
-
 if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
 google.accounts.id.prompt();
 } else {
@@ -1600,7 +1633,6 @@ isGooglePromptActive = false;
 if (btn) btn.disabled = false;
 }
 });
-
 document.getElementById('guest-mode-btn').addEventListener('click', () => {
 const user = {
 userId: 'guest_' + Date.now(),
@@ -1614,7 +1646,6 @@ setCurrentUser(user);
 showToast('success', 'Welcome, Guest! Data is saved locally.');
 });
 }
-
 function showGoogleFallback() {
 const container = document.getElementById('google-btn-container');
 if(!container) return;
@@ -1662,7 +1693,6 @@ async function onGoogleCredentialResponse(response) {
 isGooglePromptActive = false;
 const btn = document.getElementById('manual-google-btn');
 if (btn) btn.disabled = false;
-
 if (!response.credential) {
 return;
 }
@@ -1692,7 +1722,7 @@ try {
 const jwtPayload = decodeJwt(response.credential);
 if (jwtPayload && jwtPayload.email) {
 const user = {
-userId: jwtPayload.sub || 'local_' + Date.now(),
+userId: String(jwtPayload.sub || 'local_' + Date.now()),
 name: jwtPayload.name || 'StudySphere Scholar',
 email: jwtPayload.email,
 picture: jwtPayload.picture || null
@@ -1719,16 +1749,12 @@ fetchHistoryFromCloud();
 }
 function signOut() {
 const wasGuest = state.user && state.user.email === 'guest@studysphere.local';
-
 if (typeof google !== 'undefined' && google.accounts) {
 try { google.accounts.id.disableAutoSelect(); } catch (e) {}
 }
-
 if (wasGuest) {
-// Nuke everything for guest
 Object.values(CONFIG.STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
 localStorage.removeItem('ss_has_seen_tutorial');
-
 state.history = { notes: [], flashcards: [], quiz: [], editor: [], translate: [], creative: [] };
 state.binders = [];
 state.streak = { count: 0, lastDate: null };
@@ -1736,7 +1762,6 @@ state.chatHistory = [
 { role: 'system', content: 'You are a friendly, helpful AI study assistant for high school and university students. Answer questions clearly, encourage learning, and use HTML for formatting if helpful. Do not use markdown code blocks.' }
 ];
 state.activeContext = null;
-
 resetAllOutputs();
 const allTextareas = ['notes-topic', 'fc-notes', 'quiz-topic', 'ed-text', 'tr-text', 'cr-topic'];
 allTextareas.forEach(id => {
@@ -1756,10 +1781,8 @@ localStorage.removeItem(CONFIG.STORAGE_KEYS.USER);
 localStorage.removeItem(CONFIG.STORAGE_KEYS.SESSION);
 localStorage.removeItem('g_state');
 }
-
 state.user = null;
 state.sessionToken = null;
-
 updateAuthUI();
 setAuthenticated(false);
 showToast('info', wasGuest ? 'Guest session wiped clean. See you next time!' : 'Signed out successfully');
@@ -1809,12 +1832,10 @@ tutorialSeen: localStorage.getItem('ss_has_seen_tutorial') === 'true'
 }
 async function fetchHistoryFromCloud() {
 if (!state.user || !state.user.userId || !state.sessionToken) return;
-
 if (state.user.email === 'guest@studysphere.local') {
 setTimeout(showTutorial, 800);
 return;
 }
-
 try {
 const res = await apiFetch(`/api/history?userId=${state.user.userId}`);
 if (res.ok) {
@@ -2347,8 +2368,7 @@ const wordCount = userMsg.split(/\s+/).length;
 let cardCount = Math.min(20, Math.max(5, Math.floor(wordCount / 10)));
 let cards = '';
 for (let i = 1; i <= cardCount; i++) {
-cards += `<div class="fc-card"><div class="fc-q">What is the significance of concept ${i} in this context?</div><div class="fc-a">Concept ${i} is critical because it dictates the primary outcome of the system, specifically influencing the variable $\\alpha$ in the standard model.</div></div>
-`;
+cards += `<div class="fc-card"><div class="fc-q">What is the significance of concept ${i} in this context?</div><div class="fc-a">Concept ${i} is critical because it dictates the primary outcome of the system, specifically influencing the variable $\\alpha$ in the standard model.</div></div>\n`;
 }
 return cards;
 }
@@ -2491,14 +2511,14 @@ function getActiveTextarea() {
 const id = textareaMap[state.currentMode];
 return id ? document.getElementById(id) : null;
 }
-function updateCharCount() {
+const updateCharCount = debounce(function() {
 const ta = getActiveTextarea();
 const text = ta ? ta.value : '';
 const chars = text.length;
 const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 if (els.charCount) els.charCount.textContent = words + ' words · ' + chars + ' chars';
 if (ta && ta.id) saveDraft(ta.id, text);
-}
+}, 300);
 function setupFileUploads() {
 const fileInputs = document.querySelectorAll('.file-upload input[type="file"]');
 fileInputs.forEach(input => {
@@ -2712,34 +2732,7 @@ let confidenceContext = '';
 if (confidence === 'guess') confidenceContext = 'The student admitted they were just guessing. Be very foundational and explain the core concepts simply.';
 else if (confidence === 'okay') confidenceContext = 'The student was somewhat confident but unsure. Highlight specific nuances they might have missed.';
 else confidenceContext = 'The student was very confident. Be strict and look for high-level academic Band 6 / A-grade nuances they might have overlooked.';
-const markingPrompt = `You are an expert examiner. Mark the following student answer strictly and provide detailed feedback.
-${confidenceContext}
-QUESTION (${question.marks} marks):
-${question.text}
-STUDENT'S ANSWER:
-${userAnswer}
-Provide your response in the following HTML format:
-<div class="quiz-feedback">
-<div class="quiz-feedback-header">
-<span class="quiz-score">X/${question.marks}</span>
-<span class="quiz-score-label">Your Score</span>
-</div>
-<div class="quiz-feedback-section">
-<h4>✅ What You Did Well</h4>
-<p>Detailed feedback on strengths...</p>
-</div>
-<div class="quiz-feedback-section">
-<h4>⚠️ What You Missed</h4>
-<p>Detailed feedback on gaps and errors...</p>
-</div>
-<div class="quiz-feedback-section">
-<h4>📝 Model Answer (Full Marks)</h4>
-<div class="quiz-model-answer">
-Complete model answer that would score full marks...
-</div>
-</div>
-</div>
-Be strict but fair in your marking. Only award marks for correct, relevant content.`;
+const markingPrompt = `You are an expert examiner. Mark the following student answer strictly and provide detailed feedback.\n${confidenceContext}\nQUESTION (${question.marks} marks):\n${question.text}\nSTUDENT'S ANSWER:\n${userAnswer}\nProvide your response in the following HTML format:\n<div class="quiz-feedback"><div class="quiz-feedback-header"><span class="quiz-score">X/${question.marks}</span><span class="quiz-score-label">Your Score</span></div><div class="quiz-feedback-section"><h4>✅ What You Did Well</h4><p>Detailed feedback on strengths...</p></div><div class="quiz-feedback-section"><h4>⚠️ What You Missed</h4><p>Detailed feedback on gaps and errors...</p></div><div class="quiz-feedback-section"><h4>📝 Model Answer (Full Marks)</h4><div class="quiz-model-answer">Complete model answer that would score full marks...</div></div></div>\nBe strict but fair in your marking. Only award marks for correct, relevant content.`;
 const messages = [
 { role: 'system', content: 'You are a strict but fair exam marker. Provide detailed, constructive feedback.' },
 { role: 'user', content: markingPrompt }
@@ -3006,7 +2999,6 @@ action: () => {}
 function showTutorial() {
 const existing = document.getElementById('tutorial-overlay');
 if (existing) existing.remove();
-
 tutorialStep = 0;
 const overlay = document.createElement('div');
 overlay.id = 'tutorial-overlay';
