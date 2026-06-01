@@ -47,7 +47,7 @@
 --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 --transition-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
---fluid-bezier: cubic-bezier(0.16, 1, 0.3, 1);
+--fluid-bezier: cubic-bezier(0.22, 1, 0.36, 1);
 }
 [data-theme="dark"] {
 --bg: #0B1120;
@@ -136,7 +136,9 @@ border: 1px solid #FDBA74; border-radius: var(--radius-full);
 font-size: 0.85rem; font-weight: 700; color: #C2410C;
 user-select: none; font-variant-numeric: tabular-nums;
 box-shadow: 0 2px 4px rgba(251, 146, 60, 0.2);
+transition: transform 0.3s var(--fluid-bezier);
 }
+.streak-badge:hover { transform: scale(1.05); }
 [data-theme="dark"] .streak-badge {
 background: linear-gradient(135deg, rgba(251, 146, 60, 0.2), rgba(234, 88, 12, 0.2));
 border-color: rgba(251, 146, 60, 0.4); color: #FB923C;
@@ -151,7 +153,7 @@ font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);
 cursor: pointer; transition: all 0.3s var(--fluid-bezier);
 user-select: none; font-variant-numeric: tabular-nums;
 }
-.pomodoro-pill:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); }
+.pomodoro-pill:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); transform: translateY(-2px); }
 .pomodoro-pill.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent); animation: pomodoroPulse 2s infinite; }
 .pomodoro-pill svg { width: 16px; height: 16px; }
 @keyframes pomodoroPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.2); } 50% { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); } }
@@ -168,7 +170,7 @@ transition: all 0.4s var(--fluid-bezier);
 .icon-btn:hover {
 background: var(--bg-tertiary);
 border-color: var(--border-focus);
-transform: translateY(-2px);
+transform: translateY(-2px) rotate(5deg);
 box-shadow: var(--shadow-md);
 color: var(--accent);
 }
@@ -176,23 +178,24 @@ color: var(--accent);
 [data-theme="light"] .icon-moon { display: none; }
 [data-theme="dark"] .icon-sun { display: none; }
 .auth-status { display: flex; align-items: center; gap: 0.75rem; }
-.auth-user { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: 0.9rem; }
+.auth-user { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: 0.9rem; transition: all 0.3s var(--fluid-bezier); }
+.auth-user:hover { background: var(--bg-hover); transform: translateY(-1px); }
 .auth-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: white; display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; background-size: cover; background-position: center; }
 .auth-user-info { display: flex; flex-direction: column; }
 .auth-user-name { font-weight: 600; font-size: 0.85rem; }
 .auth-user-email { font-size: 0.75rem; color: var(--text-muted); }
 .auth-signin-btn { padding: 0.5rem 1rem; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.4s var(--fluid-bezier); }
-.auth-signin-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.auth-signin-btn:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .auth-signout-btn { padding: 0.4rem 0.75rem; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.8rem; cursor: pointer; transition: all 0.4s var(--fluid-bezier); }
 .auth-signout-btn:hover { background: var(--bg-tertiary); color: var(--error); border-color: var(--error); }
 .auth-gate {
 position: fixed; inset: 0;
-background: rgba(11, 17, 32, 0.8);
-backdrop-filter: blur(20px);
--webkit-backdrop-filter: blur(20px);
+background: rgba(11, 17, 32, 0.85);
+backdrop-filter: blur(24px);
+-webkit-backdrop-filter: blur(24px);
 display: flex; align-items: center; justify-content: center;
 z-index: 1000; opacity: 0; pointer-events: none;
-transition: opacity 0.5s ease;
+transition: opacity 0.6s ease;
 }
 .auth-gate::before {
 content: '';
@@ -215,37 +218,40 @@ background: var(--bg-alt);
 padding: 3rem;
 border-radius: var(--radius-xl);
 box-shadow: var(--shadow-xl);
-max-width: 420px;
+max-width: 440px;
 width: 90%;
 text-align: center;
 border: 1px solid var(--border);
-transform: translateY(20px) scale(0.95);
-transition: transform 0.5s var(--fluid-bezier);
+transform: translateY(30px) scale(0.95);
+filter: blur(10px);
+opacity: 0;
+transition: transform 0.6s var(--fluid-bezier), filter 0.6s var(--fluid-bezier), opacity 0.6s ease;
 }
-.auth-gate.visible .auth-gate-content { transform: translateY(0) scale(1); }
+.auth-gate.visible .auth-gate-content { transform: translateY(0) scale(1); filter: blur(0); opacity: 1; }
 .auth-gate-content h2 { font-size: 1.75rem; margin-bottom: 0.5rem; color: var(--text); font-weight: 800; }
 .auth-gate-content .subtitle { color: var(--text-secondary); margin-bottom: 2rem; font-size: 0.95rem; line-height: 1.5; }
 .google-signin-btn { width: 100%; padding: 0.85rem 1.5rem; background: white; color: #333; border: 1px solid var(--border); border-radius: var(--radius-md); font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: all 0.4s var(--fluid-bezier); display: flex; align-items: center; justify-content: center; gap: 0.75rem; }
 .google-signin-btn:hover { background: #f8f9fa; border-color: var(--border-focus); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.google-signin-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .google-signin-btn img { width: 20px; height: 20px; }
-.gcp-warning {
+.mobile-notice {
 margin-top: 1.5rem;
 padding: 1rem;
-background: rgba(239, 68, 68, 0.1);
-border: 1px solid var(--error);
+background: rgba(245, 158, 11, 0.1);
+border: 1px solid var(--warning);
 border-radius: var(--radius-md);
-font-size: 0.8rem;
-color: var(--error);
+font-size: 0.85rem;
+color: var(--warning);
 line-height: 1.5;
 text-align: left;
+display: flex;
+align-items: flex-start;
+gap: 0.75rem;
+animation: fadeSlideIn 0.6s var(--fluid-bezier) backwards;
+animation-delay: 0.3s;
+width: 100%;
 }
-.gcp-warning code {
-background: rgba(0,0,0,0.1);
-padding: 2px 6px;
-border-radius: 4px;
-font-family: monospace;
-font-weight: 600;
-}
+.mobile-notice svg { flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px; }
 .hero { max-width: 800px; margin: 0 auto; padding: 3rem 2rem 2rem; text-align: center; animation: fadeInUp 0.8s var(--fluid-bezier); }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 .hero h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; margin-bottom: 1rem; letter-spacing: -0.03em; line-height: 1.1; }
@@ -307,7 +313,9 @@ width: 40%;
 height: 3px;
 background: var(--accent-text);
 border-radius: 3px 3px 0 0;
+animation: slideIn 0.4s var(--fluid-bezier);
 }
+@keyframes slideIn { from { width: 0; opacity: 0; } to { width: 40%; opacity: 1; } }
 .tab-btn svg { width: 16px; height: 16px; }
 .workspace-grid { display: grid; grid-template-columns: minmax(300px, 1fr) 1.5fr; gap: 2rem; align-items: start; }
 .panel {
@@ -369,11 +377,13 @@ background-repeat: no-repeat;
 background-position: right 0.75rem center;
 background-size: 16px;
 padding-right: 2.5rem;
+cursor: pointer;
 }
 select:hover, textarea:hover { border-color: var(--border-focus); }
 select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-light); }
 textarea { min-height: 220px; resize: vertical; line-height: 1.6; font-size: 0.95rem; }
-textarea::placeholder { color: var(--text-muted); }
+textarea::placeholder { color: var(--text-muted); transition: color 0.3s ease; }
+textarea:focus::placeholder { color: transparent; }
 .file-upload {
 position: relative; padding: 1.25rem; border: 2px dashed var(--border);
 border-radius: var(--radius-md); text-align: center; cursor: pointer;
@@ -417,7 +427,7 @@ content: ''; position: absolute; inset: 0;
 background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
 transform: translateX(-100%); transition: transform 0.6s;
 }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-2px); box-shadow: 0 8px 20px -4px rgba(79, 70, 229, 0.4); }
 .btn-primary:hover:not(:disabled)::before { transform: translateX(100%); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 @keyframes btnPulse {
@@ -940,9 +950,10 @@ transition: all 0.3s var(--fluid-bezier);
 position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.95);
 background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius-xl);
 box-shadow: var(--shadow-xl); padding: 2rem; width: 90%; max-width: 500px;
-z-index: 250; opacity: 0; pointer-events: none; transition: all 0.3s var(--fluid-bezier);
+z-index: 250; opacity: 0; pointer-events: none; transition: all 0.4s var(--fluid-bezier);
+filter: blur(10px);
 }
-.shortcuts-modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+.shortcuts-modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
 .shortcuts-modal h3 { margin-bottom: 1.5rem; font-size: 1.25rem; }
 .shortcut-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
 .shortcut-row:last-child { border-bottom: none; }
@@ -1120,19 +1131,8 @@ Prompt/Topic
 </div>
 <div id="input-flashcards" class="mode-input">
 <div class="form-group">
-<label class="form-label" for="fc-count">Number of Cards</label>
-<select id="fc-count">
-<option value="5">5 Cards</option>
-<option value="10" selected>10 Cards</option>
-<option value="15">15 Cards</option>
-<option value="20">20 Cards</option>
-<option value="25">25 Cards</option>
-<option value="30">30 Cards</option>
-</select>
-</div>
-<div class="form-group">
 <label class="form-label" for="fc-notes">Prompt/Topic</label>
-<textarea id="fc-notes" placeholder="Enter your prompt or describe the topic..."></textarea>
+<textarea id="fc-notes" placeholder="Describe what flashcards you need. The AI will generate the appropriate amount based on your description..."></textarea>
 </div>
 <div class="form-group">
 <label class="file-upload">
@@ -1275,7 +1275,7 @@ Anki
 <div class="empty-state">
 <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg></div>
 <h3>Flashcard generator</h3>
-<p>Enter your prompt to generate Q&A flashcards for active recall practice.</p>
+<p>Describe what flashcards you need. The AI will intelligently generate the right amount based on your topic complexity.</p>
 </div>
 </div>
 <div id="output-quiz" class="mode-output output-content">
@@ -1319,8 +1319,8 @@ Powered by Gemini API. AI responses may be inaccurate or incomplete. Please veri
 <div class="auth-gate" id="auth-gate">
 <div class="auth-gate-content">
 <h2>Welcome to StudySphere</h2>
-<p class="subtitle">Your secure, AI-powered study workspace. Please sign in with your Google account to sync your data and get started.</p>
-<div id="google-btn-container" style="display: flex; flex-direction: column; justify-content: center; align-items: center; margin-top: 1rem; min-height: 50px;"></div>
+<p class="subtitle">Your secure, AI-powered study workspace. Please sign in to sync your data across devices.</p>
+<div id="google-btn-container" style="display: flex; flex-direction: column; justify-content: center; align-items: center; margin-top: 1.5rem; min-height: 50px; width: 100%;"></div>
 </div>
 </div>
 <div class="chat-widget">
@@ -1422,6 +1422,8 @@ let ttsBlocks = [];
 let ttsBlockIndex = 0;
 let initialOutputStates = {};
 let defaultPlaceholders = {};
+let isGooglePromptActive = false;
+
 async function apiFetch(url, options = {}) {
 const token = state.sessionToken || localStorage.getItem(CONFIG.STORAGE_KEYS.SESSION);
 const headers = { ...(options.headers || {}) };
@@ -1519,8 +1521,19 @@ document.getElementById('auth-signin-btn').addEventListener('click', showAuthGat
 }
 function showAuthGate() { document.getElementById('auth-gate').classList.add('visible'); }
 function hideAuthGate() { document.getElementById('auth-gate').classList.remove('visible'); }
+
 function initGoogleAuth() {
-if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+if (!window.googleAuthRetries) window.googleAuthRetries = 0;
+window.googleAuthRetries++;
+if (window.googleAuthRetries < 10) {
+setTimeout(initGoogleAuth, 500);
+} else {
+showGoogleFallback();
+}
+return;
+}
+
 try {
 google.accounts.id.initialize({
 client_id: GOOGLE_CLIENT_ID,
@@ -1529,8 +1542,18 @@ auto_select: false,
 cancel_on_tap_outside: true,
 ux_mode: 'popup',
 error_callback: (err) => {
-console.warn('Google Auth Init Error:', err);
-showGoogleFallback();
+console.warn('Google Auth Error:', err);
+isGooglePromptActive = false;
+const btn = document.getElementById('manual-google-btn');
+if (btn) btn.disabled = false;
+
+if (err.type === 'popup_closed_by_user' || err.type === 'user_cancel') {
+// User closed it intentionally
+} else if (err.type === ' FedCM' || err.type === 'network_error' || (err.message && err.message.includes('FedCM'))) {
+showToast('error', 'Google Sign-In blocked by browser settings or network. Please try Guest Mode.');
+} else {
+showToast('info', 'Sign-in interrupted. You can try again or use Guest Mode.');
+}
 }
 });
 renderGoogleButton();
@@ -1538,63 +1561,53 @@ renderGoogleButton();
 console.warn('Google Auth failed to initialize:', e);
 showGoogleFallback();
 }
-} else {
-if (!window.googleAuthRetries) window.googleAuthRetries = 0;
-window.googleAuthRetries++;
-if (window.googleAuthRetries < 10) {
-setTimeout(initGoogleAuth, 500);
-} else {
-showGoogleFallback();
 }
-}
-}
+
 function renderGoogleButton() {
 const container = document.getElementById('google-btn-container');
-if (container && typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-try {
-const btnWrapper = document.createElement('div');
-btnWrapper.style.marginBottom = '1rem';
-btnWrapper.style.display = 'flex';
-btnWrapper.style.justifyContent = 'center';
-container.appendChild(btnWrapper);
+if (!container) return;
 
-google.accounts.id.renderButton(btnWrapper, {
-theme: 'outline',
-size: 'large',
-type: 'standard',
-width: 280,
-error_callback: (e) => {
-console.warn('Google button render error:', e);
-showGoogleFallback();
-}
-});
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-const fallbackWrapper = document.createElement('div');
-fallbackWrapper.innerHTML = `
-<button id="manual-google-btn" class="google-signin-btn" style="width: 100%; justify-content: center; margin-top: 0.75rem; background: var(--bg-tertiary); color: var(--text);">
+container.innerHTML = `
+<button id="manual-google-btn" class="google-signin-btn" style="width: 100%; justify-content: center; background: var(--bg-alt); color: var(--text); border: 1.5px solid var(--border); box-shadow: var(--shadow-sm);">
 <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" style="width: 20px; height: 20px;">
-Retry Google Sign-In (Popup)
+Sign In with Google Account
 </button>
-<button id="guest-mode-btn" class="google-signin-btn" style="width: 100%; justify-content: center; margin-top: 0.75rem; background: var(--bg-tertiary); color: var(--text);">
+<button id="guest-mode-btn" class="google-signin-btn" style="width: 100%; justify-content: center; margin-top: 0.75rem; background: var(--accent); color: white; border: none; box-shadow: var(--shadow-md);">
 🚀 Continue as Guest (Local Only)
 </button>
-<p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 1rem; line-height: 1.4;">
-<strong>Troubleshooting:</strong> If the Google button opens an error popup, ensure <code style="background: var(--bg-tertiary); padding: 2px 4px; border-radius: 4px;">http://localhost:3000</code> is added to Authorized JavaScript origins in Google Cloud Console.
-</p>
+<div class="mobile-notice" id="mobile-notice" style="display: ${isMobile ? 'flex' : 'none'};">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+<div>
+<strong>Mobile Users:</strong> Google Sign-In is currently unsupported on mobile browsers due to cross-origin popup restrictions. Please use <strong>Guest Mode</strong> below for full local access.
+</div>
+</div>
 `;
-container.appendChild(fallbackWrapper);
+
+if (isMobile) {
+const googleBtn = document.getElementById('manual-google-btn');
+if (googleBtn) {
+googleBtn.style.opacity = '0.5';
+googleBtn.style.pointerEvents = 'none';
+}
+}
 
 document.getElementById('manual-google-btn').addEventListener('click', () => {
-if (typeof google !== 'undefined' && google.accounts) {
-google.accounts.id.prompt((notification) => {
-if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-showToast('error', 'Popup blocked or dismissed. Please check browser settings and GCP origins.');
-}
-});
+if (isGooglePromptActive) return;
+isGooglePromptActive = true;
+const btn = document.getElementById('manual-google-btn');
+if (btn) btn.disabled = true;
+
+if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+google.accounts.id.prompt();
 } else {
-showToast('error', 'Google services blocked. Try Guest Mode.');
+showToast('error', 'Google services unavailable.');
+isGooglePromptActive = false;
+if (btn) btn.disabled = false;
 }
 });
+
 document.getElementById('guest-mode-btn').addEventListener('click', () => {
 const user = {
 userId: 'guest_' + Date.now(),
@@ -1605,23 +1618,26 @@ picture: null
 state.sessionToken = 'guest_session_' + Date.now();
 localStorage.setItem(CONFIG.STORAGE_KEYS.SESSION, state.sessionToken);
 setCurrentUser(user);
-showToast('success', 'Welcome, Guest! Data is saved locally to this browser.');
+showToast('success', 'Welcome, Guest! Data is saved locally.');
 });
+}
 
-} catch(e) {
-showGoogleFallback();
-}
-}
-}
 function showGoogleFallback() {
 const container = document.getElementById('google-btn-container');
 if(!container) return;
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 container.innerHTML = `
 <div style="text-align: center; margin-top: 1rem; width: 100%;">
 <p style="color: var(--error); margin-bottom: 1rem;">Google Sign-In failed to load. Please check your internet connection or CSP.</p>
-<button id="guest-mode-btn" class="google-signin-btn" style="width: 100%; justify-content: center; background: var(--bg-tertiary); color: var(--text);">
+<button id="guest-mode-btn" class="google-signin-btn" style="width: 100%; justify-content: center; background: var(--accent); color: white; border: none; box-shadow: var(--shadow-md);">
 🚀 Continue as Guest (Local Only)
 </button>
+<div class="mobile-notice" id="mobile-notice" style="display: ${isMobile ? 'flex' : 'none'};">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+<div>
+<strong>Mobile Users:</strong> Google Sign-In is currently unsupported on mobile browsers due to cross-origin popup restrictions. Please use <strong>Guest Mode</strong> below for full local access.
+</div>
+</div>
 </div>
 `;
 document.getElementById('guest-mode-btn').addEventListener('click', () => {
@@ -1634,7 +1650,7 @@ picture: null
 state.sessionToken = 'guest_session_' + Date.now();
 localStorage.setItem(CONFIG.STORAGE_KEYS.SESSION, state.sessionToken);
 setCurrentUser(user);
-showToast('success', 'Welcome, Guest! Data is saved locally to this browser.');
+showToast('success', 'Welcome, Guest! Data is saved locally.');
 });
 }
 function decodeJwt(token) {
@@ -1650,8 +1666,11 @@ return null;
 }
 }
 async function onGoogleCredentialResponse(response) {
+isGooglePromptActive = false;
+const btn = document.getElementById('manual-google-btn');
+if (btn) btn.disabled = false;
+
 if (!response.credential) {
-showToast('error', 'Authentication cancelled.');
 return;
 }
 let backendSuccess = false;
@@ -1748,7 +1767,7 @@ delete drafts[id];
 saveToStorage(CONFIG.STORAGE_KEYS.DRAFTS, drafts);
 }
 async function syncHistoryToCloud() {
-if (!state.user || !state.user.userId || !state.sessionToken) return;
+if (!state.user || !state.user.userId || !state.sessionToken || state.user.userId.startsWith('guest_')) return;
 try {
 await apiFetch('/api/history', {
 method: 'POST',
@@ -1762,7 +1781,7 @@ tutorialSeen: localStorage.getItem('ss_has_seen_tutorial') === 'true'
 } catch (e) { console.warn('Cloud sync unavailable'); }
 }
 async function fetchHistoryFromCloud() {
-if (!state.user || !state.user.userId || !state.sessionToken) return;
+if (!state.user || !state.user.userId || !state.sessionToken || state.user.userId.startsWith('guest_')) return;
 try {
 const res = await apiFetch(`/api/history?userId=${state.user.userId}`);
 if (res.ok) {
@@ -2163,14 +2182,13 @@ if (state.currentMode !== 'flashcards' || !fcState.originalDeck || fcState.origi
 showToast('info', 'Generate flashcards first to export.');
 return;
 }
-let csvContent = 'data:text/csv;charset=utf-8,Question,Answer';
+let csvContent = 'data:text/csv;charset=utf-8,Question,Answer\n';
 fcState.originalDeck.forEach(card => {
 const qEl = card.querySelector('.fc-q');
 const aEl = card.querySelector('.fc-a');
 const q = qEl ? qEl.innerText.replace(/"/g, '""') : '';
 const a = aEl ? aEl.innerText.replace(/"/g, '""') : '';
-csvContent += `"${q}","${a}"
-`;
+csvContent += `"${q}","${a}"\n`;
 });
 const encodedUri = encodeURI(csvContent);
 const link = document.createElement("a");
@@ -2292,10 +2310,10 @@ return `<h1>🎓 Comprehensive Study Notes: ${userMsg.substring(0, 30)}</h1>
 <p>In the 2023 examination, students were required to link this concept to real-world applications...</p>`;
 }
 if (systemMsg.includes('Flashcards module')) {
-const countMatch = systemMsg.match(/EXACTLY (\d+) flashcards/);
-const count = countMatch ? parseInt(countMatch[1]) : 10;
+const wordCount = userMsg.split(/\s+/).length;
+let cardCount = Math.min(20, Math.max(5, Math.floor(wordCount / 10)));
 let cards = '';
-for (let i = 1; i <= count; i++) {
+for (let i = 1; i <= cardCount; i++) {
 cards += `<div class="fc-card"><div class="fc-q">What is the significance of concept ${i} in this context?</div><div class="fc-a">Concept ${i} is critical because it dictates the primary outcome of the system, specifically influencing the variable $\\alpha$ in the standard model.</div></div>
 `;
 }
@@ -2321,7 +2339,7 @@ return `<p>I am currently operating in <strong>Offline Mock Mode</strong>. I can
 }
 function formatAIResponse(text) {
 if (!text) return '';
-text = text.replace(/^```(?:html|markdown)?\n?/gim, '').replace(/\n?```$/g, '').trim();
+text = text.replace(/^```(?:html|markdown)?\s*/gim, '').replace(/\s*```$/g, '').trim();
 const htmlTagRegex = /<\/?(?:h[1-6]|div|ul|ol|li|p|strong|em|span|table|tr|td|th|blockquote|code)[\s>]/i;
 if (htmlTagRegex.test(text)) return sanitizeHTML(text);
 let html = text;
@@ -2344,7 +2362,6 @@ return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
 }).join('\n');
 return sanitizeHTML(html);
 }
-
 function typeHTML(element, html, speed = 8) {
 return new Promise((resolve) => {
 const temp = document.createElement('div');
@@ -2396,9 +2413,7 @@ if (textNodes.length > 0) typeNext();
 else { element.innerHTML = html; element.classList.remove('typing-in-progress'); resolve(); }
 });
 }
-
 const textareaMap = { notes: 'notes-topic', flashcards: 'fc-notes', quiz: 'quiz-topic', editor: 'ed-text', translate: 'tr-text', creative: 'cr-topic' };
-
 function switchMode(mode) {
 state.currentMode = mode;
 els.tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
@@ -2416,7 +2431,6 @@ updateToolbarVisibility();
 updateContextIndicator();
 updateDynamicPlaceholders();
 }
-
 function updateContextIndicator() {
 if (!els.contextIndicator) return;
 if (state.activeContext && state.activeContext.mode !== state.currentMode) {
@@ -2426,7 +2440,6 @@ els.contextIndicator.classList.add('visible');
 els.contextIndicator.classList.remove('visible');
 }
 }
-
 function updateDynamicPlaceholders() {
 const ta = getActiveTextarea();
 if (!ta) return;
@@ -2436,18 +2449,15 @@ ta.placeholder = `Ask anything or just click Generate (Using context from ${stat
 ta.placeholder = defaultPlaceholders[ta.id] || 'Enter your prompt...';
 }
 }
-
 function updateToolbarVisibility() {
 const activeOutput = document.getElementById('output-' + state.currentMode);
 const hasContent = activeOutput && activeOutput.innerText.trim().length > 0 && !activeOutput.querySelector('.empty-state') && !activeOutput.querySelector('.skeleton-container');
 if (els.outputToolbar) els.outputToolbar.classList.toggle('visible', hasContent);
 }
-
 function getActiveTextarea() {
 const id = textareaMap[state.currentMode];
 return id ? document.getElementById(id) : null;
 }
-
 function updateCharCount() {
 const ta = getActiveTextarea();
 const text = ta ? ta.value : '';
@@ -2456,7 +2466,6 @@ const words = text.trim() ? text.trim().split(/\s+/).length : 0;
 if (els.charCount) els.charCount.textContent = words + ' words · ' + chars + ' chars';
 if (ta && ta.id) saveDraft(ta.id, text);
 }
-
 function setupFileUploads() {
 const fileInputs = document.querySelectorAll('.file-upload input[type="file"]');
 fileInputs.forEach(input => {
@@ -2487,7 +2496,6 @@ input.disabled = false; input.value = '';
 });
 });
 }
-
 function setupClearButton() {
 if (els.btnClear) {
 els.btnClear.addEventListener('click', function() {
@@ -2506,7 +2514,6 @@ showToast('success', 'Workspace cleared');
 });
 }
 }
-
 function resetAllOutputs() {
 Object.keys(initialOutputStates).forEach(id => {
 const out = document.getElementById(id);
@@ -2519,14 +2526,12 @@ state.quizState = { questions: [], feedback: [] };
 fcState = { deck: [], originalDeck: [], currentIndex: 0, initialSize: 0, reviewedCount: 0 };
 updateToolbarVisibility();
 }
-
 function showSkeleton() {
 const output = document.getElementById('output-' + state.currentMode);
 if (output) {
 output.innerHTML = '<div class="skeleton-container"><div class="skeleton" style="height:28px;width:60%;"></div><div class="skeleton" style="height:16px;width:100%;"></div><div class="skeleton" style="height:16px;width:90%;"></div><div class="skeleton" style="height:16px;width:95%;"></div><div class="skeleton" style="height:24px;width:45%;margin-top:1.5rem;"></div><div class="skeleton" style="height:16px;width:100%;"></div><div class="skeleton" style="height:16px;width:85%;"></div></div>';
 }
 }
-
 function updateFlashcardUI() {
 const counter = document.getElementById('fc-counter');
 const progressBar = document.getElementById('fc-progress-bar');
@@ -2567,7 +2572,6 @@ const progress = (fcState.reviewedCount / fcState.initialSize) * 100;
 progressBar.style.width = Math.min(100, progress) + '%';
 }
 }
-
 function restartDeck() {
 fcState.deck = [...fcState.originalDeck];
 fcState.currentIndex = 0;
@@ -2575,7 +2579,6 @@ fcState.reviewedCount = 0;
 updateFlashcardUI();
 showToast('info', 'Deck restarted');
 }
-
 function initFlashcardDeck() {
 const outputEl = document.getElementById('output-flashcards');
 if (!outputEl) return;
@@ -2625,7 +2628,6 @@ controls.querySelector('#fc-next').onclick = () => navigateDeck(1);
 controls.querySelector('#fc-shuffle').onclick = shuffleDeck;
 updateFlashcardUI();
 }
-
 function navigateDeck(dir) {
 if (fcState.deck.length === 0) return;
 let next = fcState.currentIndex + dir;
@@ -2634,7 +2636,6 @@ if (next >= fcState.deck.length) next = 0;
 fcState.currentIndex = next;
 updateFlashcardUI();
 }
-
 function shuffleDeck() {
 if (fcState.deck.length === 0) return;
 for (let i = fcState.deck.length - 1; i > 0; i--) {
@@ -2645,7 +2646,6 @@ fcState.currentIndex = 0;
 updateFlashcardUI();
 showToast('success', 'Deck shuffled!');
 }
-
 async function handleQuizSubmit(questionIndex) {
 const answerInput = document.getElementById('quiz-answer-' + questionIndex);
 const submitBtn = document.getElementById('quiz-submit-' + questionIndex);
@@ -2729,7 +2729,6 @@ feedbackEl.style.display = 'block'; playSound('error');
 submitBtn.disabled = false; submitBtn.textContent = 'Submit Answer'; answerInput.disabled = false;
 }
 }
-
 function renderQuizQuestions(questions) {
 const output = document.getElementById('output-quiz');
 if (!output) return; output.innerHTML = '';
@@ -2741,7 +2740,6 @@ card.querySelector(`#quiz-submit-${i}`).addEventListener('click', () => handleQu
 });
 renderMath(output);
 }
-
 function buildMessages(mode) {
 const ta = getActiveTextarea();
 const text = ta ? ta.value.trim() : '';
@@ -2755,11 +2753,9 @@ systemPrompt += `CRITICAL SYLLABUS ALIGNMENT: You must strictly align your termi
 }
 if (mode === 'notes') systemPrompt += 'You are an elite ATAR/HSC university-level study tutor. Analyze the user\'s prompt carefully and generate EXTREMELY detailed, comprehensive, and structured study notes. Work hard to provide deep insights, extensive explanations, edge cases, and rich context. Do NOT summarize or hold back. Use HTML headings (<h2>, <h3>), bullet points (<ul>, <li>), and bold key terms (<strong>). Include LaTeX math ($$) where relevant. Provide maximum academic depth.';
 else if (mode === 'flashcards') {
-const countEl = document.getElementById('fc-count');
-const count = countEl ? countEl.value : '10';
-systemPrompt += `You MUST generate EXACTLY ${count} flashcards. Not ${parseInt(count)-1}, not ${parseInt(count)+1}. Count them carefully before outputting. Return STRICTLY HTML using this exact structure for each card: <div class="fc-card"><div class="fc-q">Question</div><div class="fc-a">Answer</div></div>. No markdown, no conversational filler, no introductory text.`;
+systemPrompt += 'You are an expert flashcard generator. Analyze the user\'s prompt and intelligently determine the appropriate number of flashcards to create based on the complexity and depth of the topic. Generate comprehensive, high-quality Q&A pairs that cover all key concepts. Return STRICTLY HTML using this exact structure for each card: <div class="fc-card"><div class="fc-q">Question</div><div class="fc-a">Answer</div></div>. No markdown, no conversational filler, no introductory text.';
 }
-else if (mode === 'quiz') systemPrompt += 'You are a strict, expert examiner for top-tier university and ATAR/HSC exams. Analyze the user\'s prompt and generate a highly challenging, comprehensive set of exam-style questions. Create deep, analytical questions that test true understanding, synthesis, and evaluation. Include mark allocations (typically 4-15 marks per question). Generate at least 3-5 high-quality, rigorous questions. Return the questions as a JSON array with this exact format:\n[\n{ "text": "Question text here", "marks": 5 },\n{ "text": "Another question", "marks": 8 }\n]\nReturn ONLY the JSON array, no other text, no markdown blocks.';
+else if (mode === 'quiz') systemPrompt += 'You are a strict, expert examiner for top-tier university and ATAR/HSC exams. Analyze the user\'s prompt and generate a highly challenging, comprehensive set of exam-style questions. Create deep, analytical questions that test true understanding, synthesis, and evaluation. Include mark allocations (typically 4-15 marks per question). Generate at least 3-5 high-quality, rigorous questions. Return the questions as a JSON array with this exact format:\n[\n  { "text": "Question text here", "marks": 5 },\n  { "text": "Another question", "marks": 8 }\n]\nReturn ONLY the JSON array, no other text, no markdown blocks.';
 else if (mode === 'editor') systemPrompt += 'You are an elite academic writing coach. Rewrite the text to dramatically improve clarity, flow, and impact while maintaining the original meaning. Elevate the vocabulary to a university level, fix structural issues, and make the writing highly engaging and academically rigorous. Bold key terms with <strong>.';
 else if (mode === 'translate') systemPrompt += 'You are an expert polyglot translator. Analyze the user\'s prompt to determine the source and target languages automatically. Provide a highly accurate, nuanced, and context-aware translation. Work hard to preserve the original tone, idioms, and cultural nuances. Explain tricky terms in parentheses. Bold key vocabulary with <strong>.';
 else if (mode === 'creative') systemPrompt += 'You are a highly creative study assistant and brainstorming partner. Analyze the user\'s prompt and generate an expansive, deeply detailed, and innovative response. Whether it\'s an essay outline, project ideas, or mnemonics, work hard to provide unique angles, extensive details, and actionable steps. Use HTML headings and lists.';
@@ -2770,7 +2766,6 @@ systemPrompt += `\nSEAMLESS CONTEXT INTEGRATION: The user previously used the ${
 let userPrompt = text || "Apply your tool's function to the provided context seamlessly.";
 return [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
 }
-
 async function handleGenerate() {
 if (state.isLoading) return;
 const mode = state.currentMode;
@@ -2832,7 +2827,6 @@ if (els.btnText) els.btnText.textContent = 'Generate';
 updateToolbarVisibility();
 }
 }
-
 function saveToHistory(mode, input, output) {
 const entry = { id: Date.now(), mode: mode, input: input.substring(0, 100) + '...', output: output, timestamp: new Date().toISOString() };
 if (!state.history[mode]) state.history[mode] = [];
@@ -2840,7 +2834,6 @@ state.history[mode].unshift(entry);
 if (state.history[mode].length > CONFIG.MAX_HISTORY) state.history[mode] = state.history[mode].slice(0, CONFIG.MAX_HISTORY);
 saveHistoryToStorage(); renderHistory();
 }
-
 function renderHistory() {
 if (!els.historyList) return;
 const allEntries = [];
@@ -2875,10 +2868,8 @@ updateToolbarVisibility(); closeHistory(); showToast('success', 'History loaded'
 });
 });
 }
-
 function openHistory() { if (els.historyPanel) els.historyPanel.classList.add('open'); if (els.historyOverlay) els.historyOverlay.classList.add('open'); }
 function closeHistory() { if (els.historyPanel) els.historyPanel.classList.remove('open'); if (els.historyOverlay) els.historyOverlay.classList.remove('open'); }
-
 function appendChatBubble(role, text) {
 if (!els.chatMessages) return;
 const bubble = document.createElement('div');
@@ -2896,7 +2887,6 @@ els.chatMessages.appendChild(bubble);
 els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 }
-
 function showChatTyping() {
 if (!els.chatMessages) return;
 const typing = document.createElement('div');
@@ -2905,19 +2895,16 @@ typing.innerHTML = '<span></span><span></span><span></span>';
 els.chatMessages.appendChild(typing);
 els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
-
 function hideChatTyping() {
 const typing = document.getElementById('chat-typing');
 if (typing && typing.parentNode) typing.parentNode.removeChild(typing);
 }
-
 function toggleChat() {
 if (!els.chatWindow || !els.chatToggle) return;
 const isOpen = els.chatWindow.classList.toggle('open');
 els.chatToggle.classList.toggle('active', isOpen);
 if (isOpen && els.chatInput) els.chatInput.focus();
 }
-
 function clearChatHistory() {
 state.chatHistory = [{ role: 'system', content: 'You are a friendly, helpful AI study assistant for high school and university students. Answer questions clearly, encourage learning, and use HTML for formatting if helpful. Do not use markdown code blocks.' }];
 els.chatMessages.innerHTML = '';
@@ -2925,22 +2912,19 @@ appendChatBubble('ai', '👋 Hi there! I\'m your AI study assistant. Ask me anyt
 localStorage.removeItem(CONFIG.STORAGE_KEYS.CHAT);
 showToast('info', 'Chat history cleared.');
 }
-
 function toggleShortcuts() {
 const isOpen = els.shortcutsModal.classList.toggle('open');
 els.shortcutsOverlay.classList.toggle('open', isOpen);
 }
-
 let tutorialStep = 0;
 const tutorialSteps = [
-{ icon: "🎓", title: "Welcome to StudySphere!", desc: "Your secure, AI-powered study workspace. Let's take a quick tour to boost your productivity." },
-{ icon: "🛠️", title: "Powerful Tools", desc: "Switch between Notes, Flashcards, Quiz, and more using the top tabs. The AI adapts to each tool perfectly." },
-{ icon: "🔗", title: "Seamless Context", desc: "Generate notes, then switch to Quiz or Flashcards. The AI remembers your previous context automatically!" },
-{ icon: "☁️", title: "Cloud Sync & Binders", desc: "Save important outputs to Binders. Your history and binders sync securely across all your devices." },
-{ icon: "🃏", title: "Interactive Flashcards", desc: "Flip cards with Spacebar, navigate with Arrow Keys, and track your mastery. The smooth fade makes studying fun!" },
-{ icon: "🤖", title: "AI Sidekick", desc: "Click the chat bubble anytime to ask quick questions. Press '?' for shortcuts. Let's start studying!" }
+{ icon: "🎓", title: "Welcome to StudySphere!", desc: "Your AI-powered study workspace. Let's take a quick interactive tour.", action: null },
+{ icon: "✍️", title: "Smart Context Generation", desc: "Let's try the Notes tool. We'll focus the input area for you. Just type a topic and hit Generate!", action: () => { switchMode('notes'); setTimeout(() => { const ta = document.getElementById('notes-topic'); if(ta) { ta.focus(); ta.placeholder = "Try typing: 'Quantum Physics basics'..."; } }, 300); } },
+{ icon: "🔗", title: "Seamless Tool Switching", desc: "The AI remembers your context. Let's switch to Flashcards to see how it adapts your previous topic automatically.", action: () => { switchMode('flashcards'); } },
+{ icon: "🃏", title: "Interactive Review", desc: "Use your keyboard! Press 'Space' to flip cards, and Arrow Keys to navigate. It's designed for flow state.", action: null },
+{ icon: "☁️", title: "Cloud Sync & Binders", desc: "Save your best outputs to Binders. They sync securely to your Google account across all desktop devices.", action: null },
+{ icon: "🤖", title: "Your AI Sidekick", desc: "Stuck? Open the chat assistant anytime for quick explanations. Let's open it now!", action: () => { if(!document.getElementById('chat-window').classList.contains('open')) { toggleChat(); } } }
 ];
-
 function showTutorial() {
 tutorialStep = 0;
 const overlay = document.createElement('div');
@@ -2962,7 +2946,6 @@ document.getElementById('tut-skip').onclick = closeTutorial;
 document.getElementById('tut-next').onclick = nextTutorialStep;
 renderTutorialStep();
 }
-
 function renderTutorialStep() {
 const content = document.getElementById('tut-content');
 const progress = document.getElementById('tut-progress');
@@ -2976,8 +2959,10 @@ content.style.animation = 'fadeSlideIn 0.4s var(--fluid-bezier)';
 progress.innerHTML = tutorialSteps.map((_, i) => `<div class="tutorial-dot ${i === tutorialStep ? 'active' : ''}"></div>`).join('');
 if (tutorialStep === tutorialSteps.length - 1) nextBtn.textContent = "Start Studying! 🚀";
 else nextBtn.textContent = "Next";
+if (step.action) {
+setTimeout(step.action, 500);
 }
-
+}
 function nextTutorialStep() {
 if (tutorialStep < tutorialSteps.length - 1) {
 tutorialStep++;
@@ -2986,7 +2971,6 @@ renderTutorialStep();
 closeTutorial();
 }
 }
-
 function closeTutorial() {
 localStorage.setItem('ss_has_seen_tutorial', 'true');
 syncHistoryToCloud();
@@ -2996,34 +2980,8 @@ overlay.classList.remove('active');
 setTimeout(() => overlay.remove(), 400);
 }
 }
-
-function exportToAnki() {
-if (state.currentMode !== 'flashcards' || !fcState.originalDeck || fcState.originalDeck.length === 0) {
-showToast('info', 'Generate flashcards first to export.');
-return;
-}
-let csvContent = 'data:text/csv;charset=utf-8,Question,Answer\n';
-fcState.originalDeck.forEach(card => {
-const qEl = card.querySelector('.fc-q');
-const aEl = card.querySelector('.fc-a');
-const q = qEl ? qEl.innerText.replace(/"/g, '""') : '';
-const a = aEl ? aEl.innerText.replace(/"/g, '""') : '';
-csvContent += `"${q}","${a}"\n`;
-});
-const encodedUri = encodeURI(csvContent);
-const link = document.createElement("a");
-link.setAttribute("href", encodedUri);
-link.setAttribute("download", "studysphere_flashcards_anki.csv");
-document.body.appendChild(link);
-link.click();
-document.body.removeChild(link);
-showToast('success', 'Exported to Anki CSV!');
-}
-
 function init() {
 cacheElements(); loadPersistedData(); initTheme(); updateSoundIcon(); checkAuth(); initGoogleAuth(); updateStreak();
-
-// Correctly initialize and unlock audio context on first user interaction
 const unlockAudio = () => {
 getAudioContext();
 document.removeEventListener('click', unlockAudio);
@@ -3031,7 +2989,6 @@ document.removeEventListener('keydown', unlockAudio);
 };
 document.addEventListener('click', unlockAudio);
 document.addEventListener('keydown', unlockAudio);
-
 if (els.themeToggle) els.themeToggle.addEventListener('click', toggleTheme);
 if (els.soundToggle) els.soundToggle.addEventListener('click', toggleSound);
 if (els.pomodoroPill) { els.pomodoroPill.addEventListener('click', togglePomodoro); updatePomodoroUI(); }
