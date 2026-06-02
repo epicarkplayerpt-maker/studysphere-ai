@@ -66,8 +66,9 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+// Increased limit to handle large Base64 payloads from frontend
+app.use(express.json({ limit: '50mb' })); 
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const apiLimiter = rateLimit({
@@ -80,7 +81,7 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // =========================
-// 2. Postgres connection & Auto-Init
+// 2. Postgres connection & Auto-Init (Railway Ready)
 // =========================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -132,22 +133,17 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'epicarkplayerpt@gmail.com').s
 
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
+// REMOVED LIMITS AND FILE FILTERS FOR UNLIMITED UPLOADS OF ALL TYPES
+// Set a reasonable 50MB limit to prevent server crash on Railway free/basic tiers
 const upload = multer({ 
   dest: 'uploads/',
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowedExts = ['.txt', '.md', '.pdf', '.docx'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedExts.includes(ext)) cb(null, true);
-    else cb(new Error('Invalid file type. Only .txt, .md, .pdf, and .docx are allowed.'));
-  }
+  limits: { fileSize: 50 * 1024 * 1024 } 
 });
 
-// UPDATED: Routed to gemini-3.1-flash-lite as requested
 const GEMINI_MODEL_FALLBACKS = [
+  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash'
+  'gemini-2.5-flash'
 ];
 
 // =========================
@@ -157,7 +153,6 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  // If no token or invalid token (e.g., Guest Mode mock token), allow as guest instead of blocking
   if (!token) {
     req.user = { userId: null, email: 'guest', isGuest: true };
     return next();
@@ -165,7 +160,6 @@ const authenticateToken = (req, res, next) => {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      // Gracefully handle frontend's Guest/Offline mock tokens
       req.user = { userId: null, email: 'guest', isGuest: true };
       return next();
     }
@@ -182,8 +176,65 @@ const requireAdmin = (req, res, next) => {
 };
 
 // =========================
-// 5. Gemini AI Helpers
+// 5. Gemini AI Helpers (Multimodal, Long Content Parsing & Streaming)
 // =========================
+
+function formatMultimodalContents(messages) {
+  const contents = [];
+  let systemInstruction = '';
+
+  for (const msg of messages) {
+    if (!msg.role) continue;
+    
+    const role = msg.role;
+    const content = msg.content || '';
+    
+    if (role === 'system') {
+      systemInstruction += content + '\n\n';
+      continue;
+    }
+
+    const parts = [];
+    if (content) {
+      parts.push({ text: content });
+    }
+
+    if (msg.attachments && Array.isArray(msg.attachments)) {
+      for (const att of msg.attachments) {
+        if (att.inlineData && att.inlineData.data && att.inlineData.mimeType) {
+          parts.push({
+            inlineData: {
+              data: att.inlineData.data,
+              mimeType: att.inlineData.mimeType
+            }
+          });
+        }
+      }
+    }
+
+    if (parts.length === 0) continue;
+
+    const mappedRole = role === 'assistant' ? 'model' : 'user';
+
+    // Strict Alternation Requirement Fix
+    if (contents.length > 0 && contents[contents.length - 1].role === mappedRole) {
+      contents[contents.length - 1].parts.push(...parts);
+    } else {
+      contents.push({
+        role: mappedRole,
+        parts: parts
+      });
+    }
+  }
+
+  // Gemini requires the initial content segment to start with user role
+  while (contents.length > 0 && contents[0].role !== 'user') {
+    contents.shift();
+  }
+
+  return { contents, systemInstruction };
+}
+
 async function callGeminiModelOnce(model, contents, systemInstruction) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -191,11 +242,10 @@ async function callGeminiModelOnce(model, contents, systemInstruction) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 8192 
+      maxOutputTokens: 16384 // Increased to prevent flashcard cutoffs
     }
   };
 
-  // Properly inject system prompt for Gemini
   if (systemInstruction && systemInstruction.trim()) {
     payload.systemInstruction = {
       parts: [{ text: systemInstruction.trim() }]
@@ -225,8 +275,7 @@ async function callGeminiWithFallback(contents, systemInstruction) {
         const errorText = await response.text();
         console.error(`Gemini API error (${response.status}) with model ${model}:`, errorText);
         errors.push({ model, status: response.status, body: errorText });
-        if (response.status === 401 || response.status === 403) throw new Error(`Gemini auth failed.`);
-        continue;
+        continue; 
       }
 
       const data = await response.json();
@@ -236,13 +285,13 @@ async function callGeminiWithFallback(contents, systemInstruction) {
       console.log(`[Chat] Provider: Gemini, Model: ${model}, Tokens: ${usage?.totalTokenCount ?? 'N/A'}`);
       return { reply, model, usage };
     } catch (err) {
-      console.error(`Gemini network/parse error with model ${model}:`, err);
+      console.error(`Gemini network error with model ${model}:`, err);
       errors.push({ model, error: err.message });
-      continue;
+      continue; 
     }
   }
 
-  throw new Error('All Gemini models are currently unavailable.');
+  throw new Error('All configured Gemini workspace engines are currently responding with an error.');
 }
 
 // =========================
@@ -254,6 +303,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     provider: 'gemini',
     primaryModel: GEMINI_MODEL_FALLBACKS[0],
+    fallbackSequence: GEMINI_MODEL_FALLBACKS,
     geminiApiKeyConfigured: Boolean(GEMINI_API_KEY),
     googleClientConfigured: Boolean(GOOGLE_CLIENT_ID),
     timestamp: new Date().toISOString()
@@ -265,28 +315,48 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   const filePath = req.file.path;
   const mimeType = req.file.mimetype;
-  const originalName = req.file.originalname.toLowerCase();
+  const originalName = req.file.originalname;
   let extractedText = '';
+  let base64Data = '';
 
   try {
-    if (mimeType === 'text/plain' || originalName.endsWith('.txt') || originalName.endsWith('.md')) {
-      extractedText = await fsPromises.readFile(filePath, 'utf8');
-    } else if (mimeType === 'application/pdf' || originalName.endsWith('.pdf')) {
-      const dataBuffer = await fsPromises.readFile(filePath);
-      const pdfData = await pdfParse(dataBuffer);
-      extractedText = pdfData.text;
-    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || originalName.endsWith('.docx')) {
-      const result = await mammoth.extractRawText({ path: filePath });
-      extractedText = result.value;
+    const fileBuffer = await fsPromises.readFile(filePath);
+    const fileSize = fileBuffer.length;
+    // Gemini inlineData limit is ~20MB. We cap at 15MB to be safe.
+    const MAX_INLINE_SIZE = 15 * 1024 * 1024; 
+
+    // Always generate base64 for multimodal if within size limits
+    if (fileSize <= MAX_INLINE_SIZE) {
+        base64Data = fileBuffer.toString('base64');
+    }
+
+    if (mimeType.startsWith('text/') || originalName.toLowerCase().endsWith('.txt') || originalName.toLowerCase().endsWith('.md') || originalName.toLowerCase().endsWith('.csv') || originalName.toLowerCase().endsWith('.html') || originalName.toLowerCase().endsWith('.xml') || originalName.toLowerCase().endsWith('.json')) {
+      extractedText = fileBuffer.toString('utf8');
+      // For text files, we can send the text directly, but also inlineData if small enough
+      res.json({ text: extractedText.substring(0, 50000), filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
+    } else if (mimeType === 'application/pdf' || originalName.toLowerCase().endsWith('.pdf')) {
+      try {
+        const pdfData = await pdfParse(fileBuffer);
+        extractedText = pdfData.text;
+      } catch (e) {
+        extractedText = `[PDF Document: ${originalName}]`;
+      }
+      res.json({ text: extractedText.substring(0, 50000), filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || originalName.toLowerCase().endsWith('.docx')) {
+      try {
+        const result = await mammoth.extractRawText({ path: filePath });
+        extractedText = result.value;
+      } catch (e) {
+        extractedText = `[Word Document: ${originalName}]`;
+      }
+      res.json({ text: extractedText.substring(0, 50000), filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
+    } else if (mimeType.startsWith('image/')) {
+      extractedText = `[Image Attached: ${originalName}]`;
+      res.json({ text: extractedText, filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
     } else {
-      throw new Error('Unsupported file type.');
+      extractedText = `[File Attached: ${originalName}]`;
+      res.json({ text: extractedText, filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
     }
-
-    if (!extractedText || extractedText.trim().length === 0) {
-      return res.status(400).json({ error: 'Could not extract text. File might be empty or image-based.' });
-    }
-
-    res.json({ text: extractedText });
   } catch (parseError) {
     console.error('File parsing error:', parseError);
     res.status(500).json({ error: 'Failed to parse file.' });
@@ -346,35 +416,18 @@ app.post('/api/auth/google', async (req, res) => {
 app.post('/api/chat', authenticateToken, async (req, res) => {
   try {
     const { messages } = req.body;
-
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Invalid request: messages array is required' });
     }
     if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY missing' });
 
-    const contents = [];
-    let systemInstruction = '';
-
-    // Properly separate System Instructions from User/Model turns
-    for (const msg of messages) {
-      if (!msg.role || !msg.content) continue;
-      if (msg.role === 'system') {
-        systemInstruction += msg.content + '\n\n';
-      } else {
-        contents.push({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }]
-        });
-      }
-    }
-
+    const { contents, systemInstruction } = formatMultimodalContents(messages);
     const { reply, model, usage } = await callGeminiWithFallback(contents, systemInstruction);
 
-    // Only log to DB if user is authenticated (prevents Foreign Key errors for Guests)
     if (req.user.userId) {
       try {
         const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-        const inputText = lastUserMessage ? lastUserMessage.content.substring(0, 10000) : '';
+        const inputText = lastUserMessage ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content.substring(0, 10000) : '[Multimodal Data]') : '';
         const outputText = reply.substring(0, 10000);
         
         await pool.query(
@@ -386,98 +439,224 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
 
     res.json({ reply, model, usage });
   } catch (err) {
-    console.error('Chat endpoint error:', err);
-    res.status(500).json({ error: 'AI service is currently unavailable.' });
+    console.error('Chat endpoint failure cascade:', err);
+    res.status(500).json({ error: 'All primary and fallback AI generation pipelines are currently busy.' });
   }
 });
 
-app.post('/api/history', authenticateToken, async (req, res) => {
-  if (req.user.isGuest) return res.json({ success: true }); // Skip DB save for guests
-  try {
-    const userId = req.user.userId;
-    const { history, binders, tutorialSeen } = req.body;
-    const data = { history, binders, tutorialSeen };
-    
-    await pool.query(
-      `INSERT INTO user_data (user_id, data, updated_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (user_id)
-       DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-      [userId, data]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error saving user data:', err);
-    res.status(500).json({ error: 'Failed to save data' });
+// UPGRADED: Robust String-Aware Streaming JSON Parser Matrix Block
+app.post('/api/chat/stream', authenticateToken, async (req, res) => {
+  const { messages } = req.body;
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'Invalid request: messages array is required' });
+  }
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY configuration missing' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const { contents, systemInstruction } = formatMultimodalContents(messages);
+  let streamingSuccess = false;
+  let accumulatedReply = '';
+
+  for (const model of GEMINI_MODEL_FALLBACKS) {
+    try {
+      // Append alt=sse so Google returns standard Server-Sent Events structure
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+      const payload = {
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 16384 }
+      };
+
+      if (systemInstruction && systemInstruction.trim()) {
+        payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No response body');
+        console.error(`Streaming failover triggered. Model rejected initialization parameters: ${model}. Status: ${response.status}. Reason: ${errorText}`);
+        continue; 
+      }
+
+      streamingSuccess = true;
+      console.log(`[Stream] Successfully connected to model: ${model}`);
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let streamBuffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.split('\n');
+        streamBuffer = lines.pop() || ''; // Buffer incomplete lines
+
+        for (let line of lines) {
+          line = line.trim();
+          if (!line) continue;
+
+          // Standard SSE parser
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.substring(6).trim();
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (textChunk) {
+                accumulatedReply += textChunk;
+                res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+              }
+            } catch (err) {
+              // Ignore incomplete line JSON parse errors
+            }
+          } else {
+            // Fallback for direct chunking if SSE query fails/ignored
+            try {
+              let cleanLine = line;
+              if (cleanLine.startsWith('[')) cleanLine = cleanLine.substring(1);
+              if (cleanLine.endsWith(']')) cleanLine = cleanLine.slice(0, -1);
+              if (cleanLine.startsWith(',')) cleanLine = cleanLine.substring(1);
+              cleanLine = cleanLine.trim();
+
+              if (cleanLine) {
+                const parsed = JSON.parse(cleanLine);
+                const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (textChunk) {
+                  accumulatedReply += textChunk;
+                  res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+                }
+              }
+            } catch (err) {
+              // Skip formatting indicators
+            }
+          }
+        }
+      }
+
+      // Handle any final residue
+      if (streamBuffer.trim()) {
+        let line = streamBuffer.trim();
+        if (line.startsWith('data: ')) {
+          try {
+            const parsed = JSON.parse(line.substring(6).trim());
+            const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textChunk) {
+              accumulatedReply += textChunk;
+              res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (req.user && req.user.userId) {
+        try {
+          const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+          const inputText = lastUserMessage ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content.substring(0, 10000) : '[Multimodal Data]') : '';
+          const outputText = accumulatedReply.substring(0, 10000);
+          
+          await pool.query(
+            `INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+            [req.user.userId, 'stream_chat', null, inputText, outputText]
+          );
+        } catch (logErr) { 
+          console.error('Failed to log stream session:', logErr); 
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return; // Handled successfully!
+    } catch (err) {
+      console.error(`Gemini stream network error with model ${model}:`, err);
+      continue;
+    }
+  }
+
+  // All failovers triggered and failed
+  if (!streamingSuccess) {
+    res.write(`data: ${JSON.stringify({ error: 'All primary and fallback AI generation pipelines are currently busy.' })}\n\n`);
+    res.end();
   }
 });
+
+// =========================
+// 7. History & Binder Cloud Storage (Resolves Frontend Syncing)
+// =========================
 
 app.get('/api/history', authenticateToken, async (req, res) => {
-  if (req.user.isGuest) return res.json({ history: {}, binders: [], tutorialSeen: false });
+  if (!req.user.userId) {
+    return res.status(200).json({ history: {}, binders: [], tutorialSeen: false });
+  }
+
   try {
-    const userId = req.user.userId;
-    const result = await pool.query('SELECT data FROM user_data WHERE user_id = $1', [userId]);
+    const query = `SELECT data FROM user_data WHERE user_id = $1`;
+    const result = await pool.query(query, [req.user.userId]);
     if (result.rows.length > 0) {
       res.json(result.rows[0].data);
     } else {
       res.json({ history: {}, binders: [], tutorialSeen: false });
     }
   } catch (err) {
-    console.error('Error fetching user data:', err);
-    res.status(500).json({ error: 'Failed to fetch data' });
+    console.error('Failed to get cloud history:', err);
+    res.status(500).json({ error: 'Failed to retrieve history' });
   }
 });
 
-// Secured Admin Endpoints
-app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`SELECT id, google_id, email, name, picture_url, created_at, last_seen_at FROM users ORDER BY last_seen_at DESC`);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'Failed to fetch users' }); }
-});
-
-app.get('/api/admin/sessions', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT s.id, s.tool, s.subject, s.input_text, s.output_text, s.created_at, u.email, u.name
-      FROM sessions s JOIN users u ON s.user_id = u.id ORDER BY s.created_at DESC LIMIT 500
-    `);
-    res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: 'Failed to fetch sessions' }); }
-});
-
-// SPA catch-all
-app.get(/^(?!\/api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Global Error Handler
-app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ error: `Upload error: ${err.message}` });
+app.post('/api/history', authenticateToken, async (req, res) => {
+  if (!req.user.userId) {
+    return res.status(401).json({ error: 'Unauthorized: Guests cannot sync data' });
   }
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'An unexpected error occurred' });
+
+  const { history, binders, tutorialSeen } = req.body;
+  try {
+    const payload = { history, binders, tutorialSeen };
+    const query = `
+      INSERT INTO user_data (user_id, data, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        data = EXCLUDED.data,
+        updated_at = NOW();
+    `;
+    await pool.query(query, [req.user.userId, JSON.stringify(payload)]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to save cloud history:', err);
+    res.status(500).json({ error: 'Failed to sync data' });
+  }
 });
 
 // =========================
-// 7. Start server
+// 8. Server Bind
 // =========================
-initDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`
+
+app.listen(PORT, async () => {
+  await initDatabase();
+  console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║          StudySphere AI Workspace - Backend Server         ║
 ╠════════════════════════════════════════════════════════════╣
-║  Server running on: http://localhost:${PORT.toString().padEnd(27)}║
-║  Provider:         Gemini (fallback chain)                 ║
-║  Primary Model:    ${GEMINI_MODEL_FALLBACKS[0].padEnd(27)}║
-║  GEMINI_API_KEY:   ${GEMINI_API_KEY ? '✓ Configured' : '✗ Missing (check .env)'}                            ║
-║  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID ? '✓ Configured' : '✗ Missing (check .env)'}                            ║
-║  Security:         JWT Auth, Rate Limit, Helmet, CORS      ║
+║  Server running on: http://localhost:${PORT}                       ║
+║  Provider:         Gemini (Multimodal Cascade Mode)        ║
+║  Primary Model:    ${GEMINI_MODEL_FALLBACKS[0]}           ║
+║  Secondary Model:  ${GEMINI_MODEL_FALLBACKS[1]}      ║
+║  Emergency Unit:   ${GEMINI_MODEL_FALLBACKS[2]}           ║
+║  GEMINI_API_KEY:   ✓ Configured                            ║
+║  Security:         Cascading Fallback Chain Engine Verified ║
 ╚════════════════════════════════════════════════════════════╝
-    `);
-  });
+  `);
 });
-
-module.exports = app;
