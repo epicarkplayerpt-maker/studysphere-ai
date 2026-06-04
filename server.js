@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Ultimate Production, Railway Hardened)
+// server.js - StudySphere AI Backend (Ultimate Unrestricted, Railway Hardened)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -15,6 +15,9 @@ const rateLimit = require('express-rate-limit');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 
+// =========================
+// 1. Global Crash Prevention
+// =========================
 process.on('uncaughtException', (err) => console.error('[CRITICAL] Uncaught Exception:', err));
 process.on('unhandledRejection', (reason) => console.error('[CRITICAL] Unhandled Rejection:', reason));
 
@@ -26,6 +29,9 @@ if (typeof fetch !== 'function') {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// =========================
+// 2. Security & Middleware
+// =========================
 app.use(
     helmet({
         crossOriginResourcePolicy: false,
@@ -47,24 +53,27 @@ app.use(
     })
 );
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
     : [
         'https://studysphere-ai-production.up.railway.app',
-        'http://localhost:3000', 
-        'http://localhost:5173', 
+        'http://localhost:3000',
+        'http://localhost:5173',
         'http://127.0.0.1:5500'
     ];
 
-app.use(cors({ 
-    origin: (origin, callback) => (!origin || allowedOrigins.includes(origin)) ? callback(null, true) : callback(new Error('CORS blocked')), 
-    credentials: true 
+app.use(cors({
+    origin: (origin, callback) => (!origin || allowedOrigins.includes(origin)) ? callback(null, true) : callback(new Error('CORS blocked')),
+    credentials: true
 }));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// =========================
+// 3. Postgres Connection
+// =========================
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' || process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
@@ -77,9 +86,32 @@ pool.on('error', (err) => console.error('[DB] Idle client error, auto-recovering
 
 const initDatabase = async () => {
     const queries = [
-        `CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id VARCHAR(255) UNIQUE NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, name VARCHAR(255), picture_url TEXT, metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW(), last_seen_at TIMESTAMPTZ DEFAULT NOW())`,
-        `CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, tool VARCHAR(50), subject VARCHAR(255), input_text TEXT, output_text TEXT, metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW())`,
-        `CREATE TABLE IF NOT EXISTS user_data (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, data JSONB NOT NULL, metadata JSONB DEFAULT '{}', updated_at TIMESTAMPTZ DEFAULT NOW())`,
+        `CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            google_id VARCHAR(255) UNIQUE NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            name VARCHAR(255),
+            picture_url TEXT,
+            metadata JSONB DEFAULT '{}',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            last_seen_at TIMESTAMPTZ DEFAULT NOW()
+        )`,
+        `CREATE TABLE IF NOT EXISTS sessions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            tool VARCHAR(50),
+            subject VARCHAR(255),
+            input_text TEXT,
+            output_text TEXT,
+            metadata JSONB DEFAULT '{}',
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )`,
+        `CREATE TABLE IF NOT EXISTS user_data (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            data JSONB NOT NULL,
+            metadata JSONB DEFAULT '{}',
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )`,
         `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`,
         `CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);`
     ];
@@ -91,21 +123,36 @@ const initDatabase = async () => {
     }
 };
 
+// =========================
+// 4. Config & Auth Setup
+// =========================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
-const GEMINI_MODEL_FALLBACKS = process.env.GEMINI_MODELS ? process.env.GEMINI_MODELS.split(',') : ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+const GEMINI_MODEL_FALLBACKS = process.env.GEMINI_MODELS
+    ? process.env.GEMINI_MODELS.split(',')
+    : ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
 
-const upload = multer({ dest: 'uploads/', limits: { fileSize: 100 * 1024 * 1024 } });
+const upload = multer({
+    dest: 'uploads/',
+    limits: { fileSize: 100 * 1024 * 1024 }
+});
 
-function sanitizeFilename(name) { return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255); }
+// =========================
+// 5. Security & Utility Engine
+// =========================
+function sanitizeFilename(name) {
+    return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255);
+}
 
 function redactPII(text) {
     if (!text || typeof text !== 'string') return text;
-    return text.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED_EMAIL]').replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[REDACTED_PHONE]');
+    return text
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED_EMAIL]')
+        .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[REDACTED_PHONE]');
 }
 
 function checkMagicBytes(buffer, mimeType) {
@@ -124,11 +171,17 @@ function isPayloadSafe(obj, maxDepth = 5, maxSize = 5 * 1024 * 1024) {
         if (str.length > maxSize) return false;
         const depthCheck = (o, d) => {
             if (d > maxDepth) return false;
-            if (typeof o === 'object' && o !== null) for (let k in o) if (!depthCheck(o[k], d + 1)) return false;
+            if (typeof o === 'object' && o !== null) {
+                for (let k in o) {
+                    if (!depthCheck(o[k], d + 1)) return false;
+                }
+            }
             return true;
         };
         return depthCheck(obj, 0);
-    } catch (e) { return false; }
+    } catch (e) {
+        return false;
+    }
 }
 
 function prepareContextForAI(text) {
@@ -140,6 +193,9 @@ function prepareContextForAI(text) {
     return `[SYSTEM NOTE: Document exceptionally large. Extracted Beginning, Middle, End sections to preserve context integrity.]\n\n--- BEGINNING ---\n${chunk1}\n\n--- MIDDLE ---\n${chunk2}\n\n--- END ---\n${chunk3}`;
 }
 
+// =========================
+// 6. Auth Middleware & Rate Limiting
+// =========================
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -164,12 +220,18 @@ const apiLimiter = rateLimit({
 });
 app.use('/api/', apiLimiter);
 
+// =========================
+// 7. Gemini AI Engine
+// =========================
 function formatMultimodalContents(messages) {
     const contents = [];
     let systemInstruction = '';
     for (const msg of messages) {
         if (!msg.role) continue;
-        if (msg.role === 'system') { systemInstruction += (msg.content || '') + '\n\n'; continue; }
+        if (msg.role === 'system') {
+            systemInstruction += (msg.content || '') + '\n\n';
+            continue;
+        }
         const parts = [];
         if (msg.content) parts.push({ text: msg.content });
         if (msg.attachments && Array.isArray(msg.attachments)) {
@@ -193,8 +255,13 @@ function formatMultimodalContents(messages) {
 
 async function callGeminiModelOnce(model, contents, systemInstruction) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
-    if (systemInstruction && systemInstruction.trim()) payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+    const payload = {
+        contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+    };
+    if (systemInstruction && systemInstruction.trim()) {
+        payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+    }
     return await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
@@ -219,6 +286,9 @@ async function callGeminiWithFallback(contents, systemInstruction) {
     throw new Error('All AI engines are currently busy.');
 }
 
+// =========================
+// 8. API Endpoints
+// =========================
 app.get('/api/health', (req, res) => res.json({ status: 'ok', models: GEMINI_MODEL_FALLBACKS, db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
@@ -230,8 +300,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     let base64Data = '';
     try {
         const fileBuffer = await fsPromises.readFile(filePath);
-        if (!checkMagicBytes(fileBuffer, mimeType)) return res.status(400).json({ error: 'Security Rejection: File signature mismatch.' });
+        if (!checkMagicBytes(fileBuffer, mimeType)) {
+            return res.status(400).json({ error: 'Security Rejection: File signature mismatch.' });
+        }
         if (fileBuffer.length <= 15 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
+
         if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json)$/i)) {
             extractedText = fileBuffer.toString('utf8');
         } else if (mimeType === 'application/pdf') {
@@ -243,12 +316,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         } else {
             extractedText = `[File Attached: ${originalName}]`;
         }
+
         res.json({ text: extractedText, filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
     } catch (parseError) {
         console.error('File parsing error:', parseError);
         res.status(500).json({ error: 'Failed to parse file securely.' });
     } finally {
-        try { await fsPromises.unlink(filePath); } catch (e) {}
+        try { await fsPromises.unlink(filePath); } catch (e) { /* Cleanup */ }
     }
 });
 
@@ -258,10 +332,18 @@ app.post('/api/auth/google', async (req, res) => {
         if (!idToken || !googleClient) return res.status(400).json({ error: 'Auth misconfiguration' });
         const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
         const payload = ticket.getPayload();
-        const upsertUserQuery = `INSERT INTO users (google_id, email, name, picture_url) VALUES ($1, $2, $3, $4) ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture_url = EXCLUDED.picture_url, last_seen_at = NOW() RETURNING id;`;
+
+        const upsertUserQuery = `
+            INSERT INTO users (google_id, email, name, picture_url)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (google_id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture_url = EXCLUDED.picture_url, last_seen_at = NOW() RETURNING id;`;
+
         const result = await pool.query(upsertUserQuery, [payload.sub, payload.email, payload.name || payload.email, payload.picture]);
         const userId = result.rows[0].id;
-        await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`, [userId, 'login', 'System', `OAuth Login: ${payload.email}`, 'Success']);
+
+        await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+            [userId, 'login', 'System', `OAuth Login: ${payload.email}`, 'Success']);
+
         const sessionToken = jwt.sign({ userId, email: payload.email, name: payload.name }, JWT_SECRET, { expiresIn: '30d' });
         res.json({ user: { userId, sub: payload.sub, email: payload.email, name: payload.name, picture: payload.picture }, sessionToken });
     } catch (err) {
@@ -275,18 +357,25 @@ app.post('/api/chat', async (req, res) => {
         const { messages } = req.body;
         if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
         if (!GEMINI_API_KEY) return res.status(500).json({ error: 'API Key Missing' });
+
         const processedMessages = messages.map(msg => {
-            if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 800000) return { ...msg, content: prepareContextForAI(msg.content) };
+            if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 800000) {
+                return { ...msg, content: prepareContextForAI(msg.content) };
+            }
             return msg;
         });
+
         const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
         const { reply, model, usage } = await callGeminiWithFallback(contents, systemInstruction);
+
         if (req.user && req.user.userId) {
             const lastMsg = [...messages].reverse().find(m => m.role === 'user');
             const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 10000) : '[Multimodal]') : '[No Input]');
-            const dbSafeOutput = reply.length > 1000000 ? reply.substring(0, 1000000) + '\n[DB Log Truncated]' : reply;
-            await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`, [req.user.userId, 'chat', null, inputText, redactPII(dbSafeOutput)]);
+            const dbSafeOutput = reply.length > 1000000 ? reply.substring(0, 1000000) + '\n[DB Log Truncated for Safety]' : reply;
+            await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+                [req.user.userId, 'chat', null, inputText, redactPII(dbSafeOutput)]);
         }
+
         res.json({ reply, model, usage });
     } catch (err) {
         if (err.message === 'QUOTA_EXCEEDED') return res.status(429).json({ error: 'AI Quota exceeded.' });
@@ -297,29 +386,52 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/chat/stream', async (req, res) => {
     const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
-    const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': heartbeat\n\n'); }, 15000);
+
+    const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(': heartbeat\n\n');
+    }, 15000);
     res.on('close', () => clearInterval(heartbeat));
+
     const processedMessages = messages.map(msg => {
-        if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 800000) return { ...msg, content: prepareContextForAI(msg.content) };
+        if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 800000) {
+            return { ...msg, content: prepareContextForAI(msg.content) };
+        }
         return msg;
     });
+
     const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
     let accumulatedReply = '';
+
     for (const model of GEMINI_MODEL_FALLBACKS) {
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
             const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
-            if (systemInstruction && systemInstruction.trim()) payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
-            const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }, body: JSON.stringify(payload) });
-            if (response.status === 429) { res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`); clearInterval(heartbeat); return res.end(); }
+            if (systemInstruction && systemInstruction.trim()) {
+                payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.status === 429) {
+                res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`);
+                clearInterval(heartbeat);
+                return res.end();
+            }
             if (!response.ok) continue;
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder('utf-8');
             let streamBuffer = '';
+
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -334,17 +446,23 @@ app.post('/api/chat/stream', async (req, res) => {
                         try {
                             const parsed = JSON.parse(jsonStr);
                             const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if (textChunk) { accumulatedReply += textChunk; res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`); }
+                            if (textChunk) {
+                                accumulatedReply += textChunk;
+                                res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+                            }
                         } catch (e) {}
                     }
                 }
             }
+
             if (req.user && req.user.userId) {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
                 const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 10000) : '[Multimodal]') : '[No Input]');
                 const dbSafeOutput = accumulatedReply.length > 1000000 ? accumulatedReply.substring(0, 1000000) + '\n[DB Log Truncated]' : accumulatedReply;
-                await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`, [req.user.userId, 'stream_chat', null, inputText, redactPII(dbSafeOutput)]);
+                await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+                    [req.user.userId, 'stream_chat', null, inputText, redactPII(dbSafeOutput)]);
             }
+
             res.write('data: [DONE]\n\n');
             clearInterval(heartbeat);
             return res.end();
@@ -380,13 +498,30 @@ app.get('/api/sessions', async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Sessions fetch failed' }); }
 });
 
+// =========================
+// 9. Global Error Handler & Boot
+// =========================
 app.use((err, req, res, next) => {
     console.error('[GLOBAL ERROR]', err);
-    if (err instanceof multer.MulterError) return res.status(400).json({ error: `Upload Error: ${err.message}. Max file size is 100MB.` });
+    if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: `Upload Error: ${err.message}. Max file size is 100MB.` });
+    }
     res.status(500).json({ error: 'Internal Server Error. The admin has been notified.' });
 });
 
 app.listen(PORT, async () => {
     await initDatabase();
-    console.log(`\n╔════════════════════════════════════════════════════════════╗\n║           StudySphere AI Workspace - Ultimate Backend      ║\n╠════════════════════════════════════════════════════════════╣\n║ Server running on: http://localhost:${PORT}                  ║\n║ Provider: Gemini (3.x Multimodal Cascade Mode)             ║\n║ Primary Model:   ${GEMINI_MODEL_FALLBACKS[0].padEnd(40)} ║\n║ Secondary Model: ${GEMINI_MODEL_FALLBACKS[1].padEnd(40)} ║\n║ Tertiary Model:  ${GEMINI_MODEL_FALLBACKS[2].padEnd(40)} ║\n║ Security: Magic Bytes + PII Redaction + CSP + Depth Guard  ║\n║ Uploads: 100MB Limit + Smart Chunking + Auto-Cleanup       ║\n║ Responses: UNLIMITED + Stream Heartbeat Active             ║\n╚════════════════════════════════════════════════════════════╝`);
+    console.log(`
+╔════════════════════════════════════════════════════════════╗
+║           StudySphere AI Workspace - Ultimate Backend      ║
+╠════════════════════════════════════════════════════════════╣
+║ Server running on: http://localhost:${PORT}                  ║
+║ Provider: Gemini (3.x Multimodal Cascade Mode)             ║
+║ Primary Model:   ${GEMINI_MODEL_FALLBACKS[0].padEnd(40)} ║
+║ Secondary Model: ${GEMINI_MODEL_FALLBACKS[1].padEnd(40)} ║
+║ Tertiary Model:  ${GEMINI_MODEL_FALLBACKS[2].padEnd(40)} ║
+║ Security: Magic Bytes + PII Redaction + CSP + Depth Guard  ║
+║ Uploads: 100MB Limit + Smart Chunking + Auto-Cleanup       ║
+║ Responses: UNLIMITED + Stream Heartbeat Active             ║
+╚════════════════════════════════════════════════════════════╝`);
 });
