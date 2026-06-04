@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Ultimate Unrestricted, Railway Hardened)
+// server.js - StudySphere AI Backend (Railway Hardened & Optimized)
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
@@ -7,7 +7,6 @@ const { Pool } = require('pg');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-const fs = require('fs');
 const fsPromises = require('fs/promises');
 const crypto = require('crypto');
 const helmet = require('helmet');
@@ -72,14 +71,17 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =========================
-// 3. Postgres Connection
+// 3. Postgres Connection (Railway Optimized)
 // =========================
+const isProduction = process.env.NODE_ENV === 'production';
+const useSSL = isProduction && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('internal');
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' || process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
+    ssl: useSSL ? { rejectUnauthorized: false } : false,
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 5000,
 });
 
 pool.on('error', (err) => console.error('[DB] Idle client error, auto-recovering...', err));
@@ -115,11 +117,15 @@ const initDatabase = async () => {
         `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);`,
         `CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);`
     ];
+    
+    const client = await pool.connect();
     try {
-        for (const q of queries) await pool.query(q);
+        for (const q of queries) await client.query(q);
         console.log('[DB] Railway Postgres initialized successfully.');
     } catch (err) {
         console.error('[DB] Initialization failed:', err.message);
+    } finally {
+        client.release();
     }
 };
 
@@ -129,16 +135,14 @@ const initDatabase = async () => {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').filter(Boolean);
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
-const GEMINI_MODEL_FALLBACKS = process.env.GEMINI_MODELS
-    ? process.env.GEMINI_MODELS.split(',')
-    : ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+// Strictly enforcing requested models
+const GEMINI_MODEL_FALLBACKS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite'];
 
 const upload = multer({
     dest: 'uploads/',
-    limits: { fileSize: 100 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
 });
 
 // =========================
@@ -215,7 +219,6 @@ const apiLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => (req.user && req.user.userId ? `user_${req.user.userId}` : req.ip),
-    validate: { xForwardedForHeader: false, ip: false },
     message: { error: 'Rate limit exceeded. Please slow down.' }
 });
 app.use('/api/', apiLimiter);
@@ -298,6 +301,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const originalName = sanitizeFilename(req.file.originalname);
     let extractedText = '';
     let base64Data = '';
+    
     try {
         const fileBuffer = await fsPromises.readFile(filePath);
         if (!checkMagicBytes(fileBuffer, mimeType)) {
@@ -450,7 +454,7 @@ app.post('/api/chat/stream', async (req, res) => {
                                 accumulatedReply += textChunk;
                                 res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
                             }
-                        } catch (e) {}
+                        } catch (e) { /* Ignore fragmented JSON parse errors */ }
                     }
                 }
             }
@@ -519,7 +523,6 @@ app.listen(PORT, async () => {
 ║ Provider: Gemini (3.x Multimodal Cascade Mode)             ║
 ║ Primary Model:   ${GEMINI_MODEL_FALLBACKS[0].padEnd(40)} ║
 ║ Secondary Model: ${GEMINI_MODEL_FALLBACKS[1].padEnd(40)} ║
-║ Tertiary Model:  ${GEMINI_MODEL_FALLBACKS[2].padEnd(40)} ║
 ║ Security: Magic Bytes + PII Redaction + CSP + Depth Guard  ║
 ║ Uploads: 100MB Limit + Smart Chunking + Auto-Cleanup       ║
 ║ Responses: UNLIMITED + Stream Heartbeat Active             ║
