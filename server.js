@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Railway Hardened & Optimized)
+// server.js - StudySphere AI Backend (Dynamic Routing & Hardened Security)
 // Force load and override from local .env to bypass any system-wide environment variables
 const fs = require('fs');
 const path = require('path');
@@ -78,7 +78,8 @@ app.use(cors({
     credentials: true
 }));
 
-app.use(express.json({ limit: '100mb' })); // Increased limit to prevent truncation
+// Strictly enforcing 100MB limits across the board
+app.use(express.json({ limit: '100mb' })); 
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -149,12 +150,9 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
-// Strictly enforcing requested models, completely omitting 3.5
-const GEMINI_MODEL_FALLBACKS = ['gemini-3.1-flash-lite', 'gemini-2.5-flash'];
-
 const upload = multer({
     dest: 'uploads/',
-    limits: { fileSize: 150 * 1024 * 1024 } // 150MB Limit for universal uploads
+    limits: { fileSize: 100 * 1024 * 1024 } // Strict 100MB Limit per specification
 });
 
 // =========================
@@ -164,9 +162,14 @@ function sanitizeFilename(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255);
 }
 
+function sanitizeModelName(modelStr) {
+    if (!modelStr || typeof modelStr !== 'string') return 'gemini-2.5-flash';
+    // Strip invalid characters, allow standard Gemini model strings
+    return modelStr.replace(/[^a-zA-Z0-9.-]/g, '').substring(0, 50);
+}
+
 function redactPII(text) {
     if (!text || typeof text !== 'string') return text;
-    // Mild redaction to preserve educational content integrity while securing standard PII
     return text
         .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED_EMAIL]')
         .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[REDACTED_PHONE]');
@@ -174,7 +177,7 @@ function redactPII(text) {
 
 function checkMagicBytes(buffer, mimeType) {
     if (!buffer || buffer.length === 0) return false;
-    // Strict block on direct executable uploads for security, open access for everything else
+    // Strict block on direct executables, permissive for documents and media
     if (mimeType === 'application/x-msdownload' || mimeType === 'application/x-executable') return false; 
     return true; 
 }
@@ -199,11 +202,11 @@ function isPayloadSafe(obj, maxDepth = 10, maxSize = 25 * 1024 * 1024) {
 }
 
 function prepareContextForAI(text) {
-    const MAX_SAFE_CHARS = 1500000; // Massively increased to prevent AI cutoffs
+    const MAX_SAFE_CHARS = 2000000; // Massively increased for full response contexts
     if (!text || text.length <= MAX_SAFE_CHARS) return text;
-    const chunk1 = text.substring(0, 500000);
+    const chunk1 = text.substring(0, 750000);
     const chunk2 = text.substring(text.length / 2 - 250000, text.length / 2 + 250000);
-    const chunk3 = text.substring(text.length - 500000);
+    const chunk3 = text.substring(text.length - 750000);
     return `[SYSTEM NOTE: Document exceptionally large. Extracted Beginning, Middle, End sections to preserve context integrity.]\n\n--- BEGINNING ---\n${chunk1}\n\n--- MIDDLE ---\n${chunk2}\n\n--- END ---\n${chunk3}`;
 }
 
@@ -235,7 +238,7 @@ app.use(authenticateToken);
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 1000, // Very high limit to accommodate complex operations without throttling
+    max: 1000, 
     standardHeaders: true,
     legacyHeaders: false,
     validate: { keyGeneratorIpFallback: false },
@@ -245,7 +248,7 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // =========================
-// 7. Gemini AI Engine
+// 7. Dynamic AI Engine
 // =========================
 function formatMultimodalContents(messages) {
     const contents = [];
@@ -277,49 +280,10 @@ function formatMultimodalContents(messages) {
     return { contents, systemInstruction };
 }
 
-async function callGeminiModelOnce(model, contents, systemInstruction) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-    const payload = {
-        contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } // Maximized output tokens to prevent truncation
-    };
-    
-    // Add thinking config exclusively for 2.5 flash
-    if (model === 'gemini-2.5-flash') {
-        payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-    }
-    
-    if (systemInstruction && systemInstruction.trim()) {
-        payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
-    }
-    return await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-        body: JSON.stringify(payload)
-    });
-}
-
-async function callGeminiWithFallback(contents, systemInstruction) {
-    for (const model of GEMINI_MODEL_FALLBACKS) {
-        try {
-            const response = await callGeminiModelOnce(model, contents, systemInstruction);
-            if (response.status === 429) throw new Error('QUOTA_EXCEEDED');
-            if (!response.ok) continue;
-            const data = await response.json();
-            const reply = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join(' ').trim() || 'No response generated.';
-            return { reply, model, usage: data.usageMetadata || null };
-        } catch (err) {
-            if (err.message === 'QUOTA_EXCEEDED') throw err;
-            continue;
-        }
-    }
-    throw new Error('All AI engines are currently busy.');
-}
-
 // =========================
 // 8. API Endpoints
 // =========================
-app.get('/api/health', (req, res) => res.json({ status: 'ok', models: GEMINI_MODEL_FALLBACKS, db: 'connected' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', engine: 'Dynamic UI Routing', db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -335,8 +299,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'Security Rejection: Executable block.' });
         }
         
-        // Base64 limit raised to accommodate high-res images and larger documents
-        if (fileBuffer.length <= 25 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
+        // Passing up to 30MB seamlessly as Base64 for high-res AI Vision
+        if (fileBuffer.length <= 30 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
 
         if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json|js|py|java|c|cpp|sql)$/i)) {
             extractedText = fileBuffer.toString('utf8');
@@ -347,7 +311,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         } else if (mimeType.startsWith('image/')) {
             extractedText = `[Image Attached: ${originalName} - Advanced AI Vision Pipeline Active]`;
         } else {
-            // Universal fallback, passes base64 back for raw model interpretation
             extractedText = `[Complex File Attached: ${originalName} - MimeType: ${mimeType}]`;
         }
 
@@ -388,42 +351,74 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
     try {
-        const { messages } = req.body;
-        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
+        // Model dynamically pulled directly from the frontend request
+        const { messages, model } = req.body;
+        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request format' });
         if (!GEMINI_API_KEY) return res.status(500).json({ error: 'API Key Missing' });
 
+        const targetModel = sanitizeModelName(model);
+
         const processedMessages = messages.map(msg => {
-            if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 1500000) {
+            if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
                 return { ...msg, content: prepareContextForAI(msg.content) };
             }
             return msg;
         });
 
         const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
-        const { reply, model, usage } = await callGeminiWithFallback(contents, systemInstruction);
+        
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
+        const payload = {
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+        };
+        
+        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
+            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
+        }
+        
+        if (systemInstruction && systemInstruction.trim()) {
+            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 429) return res.status(429).json({ error: 'AI Quota exceeded.' });
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Google API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join(' ').trim() || 'No response generated.';
 
         if (req.user && req.user.userId) {
             try {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
                 const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal Request]') : '[No Input Detected]');
-                // Ensuring no truncation for the database log to preserve full translations and massive outputs
                 await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-                    [req.user.userId, 'chat', null, inputText, redactPII(reply)]);
+                    [req.user.userId, 'chat', targetModel, inputText, redactPII(reply)]);
             } catch (dbErr) {
                 console.error('[DB ERROR] Failed to save chat session log:', dbErr.message);
             }
         }
 
-        res.json({ reply, model, usage });
+        res.json({ reply, model: targetModel, usage: data.usageMetadata || null });
     } catch (err) {
-        if (err.message === 'QUOTA_EXCEEDED') return res.status(429).json({ error: 'AI Quota exceeded.' });
+        console.error('Chat error:', err.message);
         res.status(500).json({ error: 'AI generation failed.' });
     }
 });
 
 app.post('/api/chat/stream', async (req, res) => {
-    const { messages } = req.body;
+    const { messages, model } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
+
+    const targetModel = sanitizeModelName(model);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -436,7 +431,7 @@ app.post('/api/chat/stream', async (req, res) => {
     res.on('close', () => clearInterval(heartbeat));
 
     const processedMessages = messages.map(msg => {
-        if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 1500000) {
+        if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
             return { ...msg, content: prepareContextForAI(msg.content) };
         }
         return msg;
@@ -445,79 +440,77 @@ app.post('/api/chat/stream', async (req, res) => {
     const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
     let accumulatedReply = '';
 
-    for (const model of GEMINI_MODEL_FALLBACKS) {
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
-            const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
-            
-            if (model === 'gemini-2.5-flash') {
-                payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-            }
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+        const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
+        
+        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
+            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
+        }
 
-            if (systemInstruction && systemInstruction.trim()) {
-                payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
-            }
+        if (systemInstruction && systemInstruction.trim()) {
+            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+        }
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
-                body: JSON.stringify(payload)
-            });
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+            body: JSON.stringify(payload)
+        });
 
-            if (response.status === 429) {
-                res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`);
-                clearInterval(heartbeat);
-                return res.end();
-            }
-            if (!response.ok) continue;
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder('utf-8');
-            let streamBuffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                streamBuffer += decoder.decode(value, { stream: true });
-                const lines = streamBuffer.split('\n');
-                streamBuffer = lines.pop() || '';
-                for (let line of lines) {
-                    line = line.trim();
-                    if (line.startsWith('data: ')) {
-                        const jsonStr = line.substring(6).trim();
-                        if (jsonStr === '[DONE]') continue;
-                        try {
-                            const parsed = JSON.parse(jsonStr);
-                            const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if (textChunk) {
-                                accumulatedReply += textChunk;
-                                res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
-                            }
-                        } catch (e) { /* Ignore fragmented JSON parse errors */ }
-                    }
-                }
-            }
-
-            if (req.user && req.user.userId) {
-                try {
-                    const lastMsg = [...messages].reverse().find(m => m.role === 'user');
-                    const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal]') : '[No Input]');
-                    // Save full stream data rigorously without truncation
-                    await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-                        [req.user.userId, 'stream_chat', null, inputText, redactPII(accumulatedReply)]);
-                } catch (dbErr) {
-                    console.error('[DB ERROR] Failed to save stream chat session log:', dbErr.message);
-                }
-            }
-
-            res.write('data: [DONE]\n\n');
+        if (response.status === 429) {
+            res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`);
             clearInterval(heartbeat);
             return res.end();
-        } catch (err) { continue; }
+        }
+        
+        if (!response.ok) throw new Error('API Rejection');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let streamBuffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            streamBuffer += decoder.decode(value, { stream: true });
+            const lines = streamBuffer.split('\n');
+            streamBuffer = lines.pop() || '';
+            for (let line of lines) {
+                line = line.trim();
+                if (line.startsWith('data: ')) {
+                    const jsonStr = line.substring(6).trim();
+                    if (jsonStr === '[DONE]') continue;
+                    try {
+                        const parsed = JSON.parse(jsonStr);
+                        const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (textChunk) {
+                            accumulatedReply += textChunk;
+                            res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
+                        }
+                    } catch (e) { /* Ignore fragmented JSON parse errors */ }
+                }
+            }
+        }
+
+        if (req.user && req.user.userId) {
+            try {
+                const lastMsg = [...messages].reverse().find(m => m.role === 'user');
+                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal]') : '[No Input]');
+                await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+                    [req.user.userId, 'stream_chat', targetModel, inputText, redactPII(accumulatedReply)]);
+            } catch (dbErr) {
+                console.error('[DB ERROR] Failed to save stream chat session log:', dbErr.message);
+            }
+        }
+
+        res.write('data: [DONE]\n\n');
+    } catch (err) {
+        res.write(`data: ${JSON.stringify({ error: 'AI generation failed or model unavailable.' })}\n\n`);
+    } finally {
+        clearInterval(heartbeat);
+        res.end();
     }
-    res.write(`data: ${JSON.stringify({ error: 'All AI engines busy.' })}\n\n`);
-    clearInterval(heartbeat);
-    res.end();
 });
 
 app.get('/api/history', async (req, res) => {
@@ -551,7 +544,7 @@ app.get('/api/sessions', async (req, res) => {
 app.use((err, req, res, next) => {
     console.error('[GLOBAL ERROR]', err);
     if (err instanceof multer.MulterError) {
-        return res.status(400).json({ error: `Upload Error: ${err.message}. Ensure your file meets limits.` });
+        return res.status(400).json({ error: `Upload Error: ${err.message}. Max file size is strictly 100MB.` });
     }
     res.status(500).json({ error: 'Internal Server Error. The admin has been notified.' });
 });
@@ -563,11 +556,9 @@ app.listen(PORT, async () => {
 ║           StudySphere AI Workspace - Ultimate Backend      ║
 ╠════════════════════════════════════════════════════════════╣
 ║ Server running on: http://localhost:${PORT}                  ║
-║ Provider: Gemini (Strict Flash-Lite & 2.5 Cascade Mode)    ║
-║ Primary Model:   ${GEMINI_MODEL_FALLBACKS[0].padEnd(40)} ║
-║ Secondary Model: ${GEMINI_MODEL_FALLBACKS[1].padEnd(40)} ║
-║ Security: Permissive Magic Bytes + Deep PII + DB Guard     ║
-║ Uploads: 150MB Limit + Universal File Ingestion            ║
-║ Translations: UNLIMITED Native Extents + Max Tokens Active ║
+║ Mode: Fully Dynamic UI Integration                         ║
+║ File Limit: 100MB Universal Document & Image Ingestion     ║
+║ Processing: 8192 Max Output Tokens + Dynamic Reasoning     ║
+║ DB: Active PostgreSQL Logging Enabled                      ║
 ╚════════════════════════════════════════════════════════════╝`);
 });
