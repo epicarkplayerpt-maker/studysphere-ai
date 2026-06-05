@@ -27,6 +27,8 @@ a{color:var(--accent);text-decoration:none}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
 @media(hover:none)and(pointer:coarse){.btn,.toolbar-btn,.icon-btn,.tab-btn,.fc-nav-btn,.quiz-conf-btn,.auth-signin-btn,.auth-signout-btn,.google-signin-btn{min-height:44px;min-width:44px}}
 body:not(.authenticated) .workspace,body:not(.authenticated) .chat-widget,body:not(.authenticated) .hero,body:not(.authenticated) .header-actions>*:not(#auth-status){display:none!important}
+body.authenticated .landing-page{display:none!important}
+body:not(.authenticated) header,body:not(.authenticated) footer:not(.landing-footer){display:none!important}
 body:not(.authenticated) .auth-gate{opacity:1;pointer-events:auto}
 header{padding:calc(1rem + var(--safe-top)) 2rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:rgba(248,250,252,0.85);backdrop-filter:blur(12px);z-index:100}
 [data-theme="dark"] header{background:rgba(11,17,32,0.85)}
@@ -2164,21 +2166,13 @@ const formData = new FormData(); formData.append('file', file);
 const res = await apiFetch('/api/upload', { method: 'POST', body: formData });
 let data; try { data = await res.json(); } catch (parseErr) { throw new Error('Invalid server response.'); }
 if (!res.ok || data.error) throw new Error(data.error || 'Failed to process file.');
-if (ta) {
-if (data.text && !data.text.startsWith('[') && data.text.length < 20000) {
-ta.value = (ta.value ? ta.value + '\n\n' : '') + data.text;
-} else {
-ta.value = (ta.value ? ta.value + '\n\n' : '') + `[Attached File: ${data.filename}]`;
-}
-updateCharCount();
-}
-if (data.inlineData) {
+// Store extracted text as background context - do NOT modify the textarea
 state.attachments.push({
 filename: data.filename,
-inlineData: data.inlineData
+extractedText: data.text || '',
+inlineData: data.inlineData || null
 });
 renderAttachments();
-}
 showToast('success', 'Loaded: ' + file.name);
 apiSuccess = true;
 } catch (err) {
@@ -2190,11 +2184,13 @@ const isTextFile = file.type.startsWith('text/') || /\.(txt|md|csv|json|html|xml
 if (isTextFile) {
 const reader = new FileReader();
 reader.onload = (event) => {
-if (ta) {
-ta.value = (ta.value ? ta.value + '\n\n--- FILE CONTENT ---\n\n' : '') + event.target.result;
-updateCharCount();
+state.attachments.push({
+filename: file.name,
+extractedText: event.target.result,
+inlineData: null
+});
+renderAttachments();
 showToast('success', 'Loaded locally (Offline Mode): ' + file.name);
-}
 };
 reader.onerror = () => showToast('error', 'Failed to read file locally.');
 reader.readAsText(file);
@@ -2203,11 +2199,10 @@ const reader = new FileReader();
 reader.onload = (event) => {
 state.attachments.push({
 filename: file.name,
+extractedText: '',
 inlineData: event.target.result
 });
 renderAttachments();
-if(ta) ta.value = (ta.value ? ta.value + '\n\n' : '') + `[Attached Image: ${file.name}]`;
-updateCharCount();
 showToast('success', 'Image loaded locally: ' + file.name);
 };
 reader.readAsDataURL(file);
@@ -2490,10 +2485,23 @@ systemPrompt += ' CRITICAL DIRECTIVES: 1. You have absolutely NO length limits; 
 if (state.activeContext && state.activeContext.mode !== mode) {
 systemPrompt += `\nSEAMLESS CONTEXT INTEGRATION: The user previously used the ${state.activeContext.mode} tool. Here is the exact content they generated, which you MUST use as the foundational context for your current task:\n---\n${state.activeContext.text}\n---\nIf the user's current prompt is brief (e.g., "make a quiz", "do flashcards", or empty), assume they want you to apply your current tool's function to this provided context automatically. Extract every key detail from the context.`;
 }
+// Inject uploaded file text as background context for the AI
+if (state.attachments && state.attachments.length > 0) {
+const textAttachments = state.attachments.filter(att => att.extractedText && att.extractedText.length > 0);
+if (textAttachments.length > 0) {
+systemPrompt += '\n\nUPLOADED FILE CONTEXT (use this as background material for your response):\n';
+textAttachments.forEach(att => {
+systemPrompt += `--- ${att.filename} ---\n${att.extractedText.substring(0, 50000)}\n--- end ---\n`;
+});
+}
+}
 let userPrompt = text || "Apply your tool's function to the provided context seamlessly.";
 let userMsg = { role: 'user', content: userPrompt };
 if (state.attachments && state.attachments.length > 0) {
-userMsg.attachments = state.attachments.map(att => ({ inlineData: att.inlineData }));
+const imageAttachments = state.attachments.filter(att => att.inlineData);
+if (imageAttachments.length > 0) {
+userMsg.attachments = imageAttachments.map(att => ({ inlineData: att.inlineData }));
+}
 }
 return [{ role: 'system', content: systemPrompt }, userMsg];
 }
