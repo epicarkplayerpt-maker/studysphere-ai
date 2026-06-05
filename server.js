@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Groq LPU High-Speed Core)
+// server.js - StudySphere AI Backend (Native Gemini Core)
 // Force load and override from local .env to bypass any system-wide environment variables
 const fs = require('fs');
 const path = require('path');
@@ -55,7 +55,7 @@ app.use(
                 fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:"],
                 imgSrc: ["'self'", "data:", "http:", "https:", "blob:", "https://lh3.googleusercontent.com", "https://*.googleusercontent.com"],
                 frameSrc: ["'self'", "https://accounts.google.com", "https://apis.google.com", "https://ogs.google.com"],
-                connectSrc: ["'self'", "https://api.groq.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
+                connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
                 objectSrc: ["'none'"],
                 baseUri: ["'self'"],
                 formAction: ["'self'"]
@@ -83,7 +83,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =========================
-// 3. Postgres Connection
+// 3. Postgres Connection 
 // =========================
 const isProduction = process.env.NODE_ENV === 'production';
 const useSSL = isProduction && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('internal');
@@ -144,15 +144,14 @@ const initDatabase = async () => {
 // =========================
 // 4. Config & Auth Setup
 // =========================
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'; // Standardized OpenAI compat
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 const upload = multer({
     dest: 'uploads/',
-    limits: { fileSize: 100 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 } // Locked down to maximum 100MB specifications
 });
 
 // =========================
@@ -160,6 +159,11 @@ const upload = multer({
 // =========================
 function sanitizeFilename(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255);
+}
+
+function sanitizeModelName(modelStr) {
+    if (!modelStr || typeof modelStr !== 'string') return 'gemini-2.5-flash';
+    return modelStr.replace(/[^a-zA-Z0-9.-]/g, '').substring(0, 50);
 }
 
 function redactPII(text) {
@@ -195,7 +199,7 @@ function isPayloadSafe(obj, maxDepth = 10, maxSize = 35 * 1024 * 1024) {
 }
 
 function prepareContextForAI(text) {
-    const MAX_SAFE_CHARS = 2500000;
+    const MAX_SAFE_CHARS = 2500000; 
     if (!text || text.length <= MAX_SAFE_CHARS) return text;
     const chunk1 = text.substring(0, 1000000);
     const chunk2 = text.substring(text.length / 2 - 250000, text.length / 2 + 250000);
@@ -241,49 +245,42 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // =========================
-// 7. Groq Payload Normalizer
+// 7. Native Gemini Payload Normalizer
 // =========================
-function formatOpenAIMessages(messages) {
-    const formatted = [];
+function formatMultimodalContents(messages) {
+    const contents = [];
     let systemInstruction = '';
-    
     for (const msg of messages) {
         if (!msg.role) continue;
         if (msg.role === 'system') {
             systemInstruction += (msg.content || '') + '\n\n';
             continue;
         }
-        
-        let content = msg.content;
-        
-        if (msg.attachments && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
-            content = [{ type: 'text', text: msg.content || 'Analyze the attached file telemetry.' }];
+        const parts = [];
+        if (msg.content) parts.push({ text: msg.content });
+        if (msg.attachments && Array.isArray(msg.attachments)) {
             for (const att of msg.attachments) {
                 if (att.inlineData && att.inlineData.data && att.inlineData.mimeType) {
-                    content.push({
-                        type: 'image_url',
-                        image_url: {
-                            url: `data:${att.inlineData.mimeType};base64,${att.inlineData.data}`
-                        }
-                    });
+                    parts.push({ inlineData: { data: att.inlineData.data, mimeType: att.inlineData.mimeType } });
                 }
             }
         }
-        
-        formatted.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content });
+        if (parts.length === 0) continue;
+        const mappedRole = msg.role === 'assistant' ? 'model' : 'user';
+        if (contents.length > 0 && contents[contents.length - 1].role === mappedRole) {
+            contents[contents.length - 1].parts.push(...parts);
+        } else {
+            contents.push({ role: mappedRole, parts });
+        }
     }
-    
-    if (systemInstruction.trim()) {
-        formatted.unshift({ role: 'system', content: systemInstruction.trim() });
-    }
-    
-    return formatted;
+    while (contents.length > 0 && contents[0].role !== 'user') contents.shift();
+    return { contents, systemInstruction };
 }
 
 // =========================
 // 8. API Endpoints
 // =========================
-app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'Groq High-Speed Core', db: 'connected' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'Native Gemini Core', db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -299,6 +296,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'Security Rejection: Malicious executable signature detected.' });
         }
         
+        // Pass up to 40MB for high-res native Gemini Vision parsing
         if (fileBuffer.length <= 40 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
 
         if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json|js|py|java|c|cpp|sql|ts|tsx)$/i)) {
@@ -351,11 +349,10 @@ app.post('/api/auth/google', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
     try {
         const { messages, model } = req.body;
-        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed array block' });
-        if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API Key Configuration Missing' });
+        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request format' });
+        if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Google API Key Configuration Missing' });
 
-        // Fallback to Groq's high-power Llama 3.3 70B if none provided by UI
-        const targetModel = model || 'llama-3.3-70b-versatile'; 
+        const targetModel = sanitizeModelName(model);
 
         const processedMessages = messages.map(msg => {
             if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
@@ -364,56 +361,61 @@ app.post('/api/chat', async (req, res) => {
             return msg;
         });
 
-        const openAiMessages = formatOpenAIMessages(processedMessages);
+        const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
         
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
         const payload = {
-            model: targetModel,
-            messages: openAiMessages,
-            temperature: 0.7,
-            max_tokens: 8192 
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
         };
+        
+        // Native Thinking Budget unlocked for advanced logical tasks
+        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
+            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
+        }
+        
+        if (systemInstruction && systemInstruction.trim()) {
+            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+        }
 
-        const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+        const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${GROQ_API_KEY}`
-            },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
             body: JSON.stringify(payload)
         });
 
+        if (response.status === 429) return res.status(429).json({ error: 'AI Quota exceeded.' });
         if (!response.ok) {
             const errText = await response.text();
-            throw new Error(`Groq Link Rejection: ${response.status} - ${errText}`);
+            throw new Error(`Google API Error: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
-        const reply = data?.choices?.[0]?.message?.content || 'No processing return data generated.';
-        const resolvingModel = data?.model || targetModel;
+        const reply = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join(' ').trim() || 'No response generated.';
 
         if (req.user && req.user.userId) {
             try {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
-                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[File Payload Intercept]') : '[Zero Input Trace]');
+                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal Request]') : '[No Input Detected]');
                 await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-                    [req.user.userId, 'chat', resolvingModel, inputText, redactPII(reply)]);
+                    [req.user.userId, 'chat', targetModel, inputText, redactPII(reply)]);
             } catch (dbErr) {
-                console.error('[DB SYNCHRONIZATION FAULT]:', dbErr.message);
+                console.error('[DB ERROR] Failed to save chat session log:', dbErr.message);
             }
         }
 
-        res.json({ reply, model: resolvingModel, usage: data?.usage || null });
+        res.json({ reply, model: targetModel, usage: data.usageMetadata || null });
     } catch (err) {
-        console.error('Chat routing error:', err.message);
-        res.status(500).json({ error: 'Generation loop failure over Groq pipeline.' });
+        console.error('Chat error:', err.message);
+        res.status(500).json({ error: 'AI generation failed via Gemini Pipeline.' });
     }
 });
 
 app.post('/api/chat/stream', async (req, res) => {
     const { messages, model } = req.body;
-    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed stream mapping' });
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
 
-    const targetModel = model || 'llama-3.3-70b-versatile';
+    const targetModel = sanitizeModelName(model);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -432,33 +434,34 @@ app.post('/api/chat/stream', async (req, res) => {
         return msg;
     });
 
-    const openAiMessages = formatOpenAIMessages(processedMessages);
+    const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
     let accumulatedReply = '';
 
     try {
-        const payload = {
-            model: targetModel,
-            messages: openAiMessages,
-            temperature: 0.7,
-            max_tokens: 8192,
-            stream: true
-        };
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+        const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
+        
+        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
+            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
+        }
 
-        const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+        if (systemInstruction && systemInstruction.trim()) {
+            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
+        }
+
+        const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${GROQ_API_KEY}`
-            },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            res.write(`data: ${JSON.stringify({ error: `Gateway Connection Dropped: ${response.status}` })}\n\n`);
+        if (response.status === 429) {
+            res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`);
             clearInterval(heartbeat);
             return res.end();
         }
+        
+        if (!response.ok) throw new Error('API Rejection from Google');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
@@ -470,7 +473,6 @@ app.post('/api/chat/stream', async (req, res) => {
             streamBuffer += decoder.decode(value, { stream: true });
             const lines = streamBuffer.split('\n');
             streamBuffer = lines.pop() || '';
-            
             for (let line of lines) {
                 line = line.trim();
                 if (line.startsWith('data: ')) {
@@ -478,12 +480,12 @@ app.post('/api/chat/stream', async (req, res) => {
                     if (jsonStr === '[DONE]') continue;
                     try {
                         const parsed = JSON.parse(jsonStr);
-                        const textChunk = parsed?.choices?.[0]?.delta?.content;
+                        const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
                         if (textChunk) {
                             accumulatedReply += textChunk;
                             res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
                         }
-                    } catch (e) { /* Fragment shielding */ }
+                    } catch (e) { /* Ignore fragmented JSON parse errors */ }
                 }
             }
         }
@@ -491,17 +493,17 @@ app.post('/api/chat/stream', async (req, res) => {
         if (req.user && req.user.userId) {
             try {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
-                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Stream Multimodal]') : '[No Trace]');
+                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal]') : '[No Input]');
                 await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
                     [req.user.userId, 'stream_chat', targetModel, inputText, redactPII(accumulatedReply)]);
             } catch (dbErr) {
-                console.error('[DB SYNCHRONIZATION FAULT]:', dbErr.message);
+                console.error('[DB ERROR] Failed to save stream chat session log:', dbErr.message);
             }
         }
 
         res.write('data: [DONE]\n\n');
     } catch (err) {
-        res.write(`data: ${JSON.stringify({ error: 'Stream pipeline disruption occurred.' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: 'AI generation failed or model unavailable.' })}\n\n`);
     } finally {
         clearInterval(heartbeat);
         res.end();
@@ -518,7 +520,7 @@ app.get('/api/history', async (req, res) => {
 
 app.post('/api/history', async (req, res) => {
     if (!req.user.userId) return res.status(401).json({ error: 'Unauthorized' });
-    if (!isPayloadSafe(req.body)) return res.status(400).json({ error: 'Payload rejected (Size/Depth shield triggered).' });
+    if (!isPayloadSafe(req.body)) return res.status(400).json({ error: 'Payload rejected (Size/Depth limit).' });
     try {
         await pool.query(`INSERT INTO user_data (user_id, data, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`, [req.user.userId, JSON.stringify(req.body)]);
         res.json({ success: true });
@@ -548,12 +550,12 @@ app.listen(PORT, async () => {
     await initDatabase();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           StudySphere AI Workspace - Groq LPU Core         ║
+║           StudySphere AI Workspace - Native Gemini Core    ║
 ╠════════════════════════════════════════════════════════════╣
 ║ Server running on: http://localhost:${PORT}                  ║
 ║ Mode: Fully Dynamic Website Settings Overrides             ║
-║ Gateway Route: https://api.groq.com/openai/v1              ║
-║ Speed: Ultra-Low Latency Inference                         ║
+║ Gateway Route: generativelanguage.googleapis.com           ║
+║ Features: Max Output Tokens + Thinking Budget Unlocked     ║
 ║ Universal Ingestion Capacity: 100MB Hard Lock              ║
 ║ Database Synergy: Seamless Railway PostgreSQL Logging      ║
 ╚════════════════════════════════════════════════════════════╝`);
