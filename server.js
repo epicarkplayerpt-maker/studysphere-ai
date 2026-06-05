@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Native Gemini Core)
+// server.js - StudySphere AI Backend (Hardlocked 3.1 Flash-Lite Core)
 // Force load and override from local .env to bypass any system-wide environment variables
 const fs = require('fs');
 const path = require('path');
@@ -161,11 +161,6 @@ function sanitizeFilename(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255);
 }
 
-function sanitizeModelName(modelStr) {
-    if (!modelStr || typeof modelStr !== 'string') return 'gemini-2.5-flash';
-    return modelStr.replace(/[^a-zA-Z0-9.-]/g, '').substring(0, 50);
-}
-
 function redactPII(text) {
     if (!text || typeof text !== 'string') return text;
     return text
@@ -280,7 +275,7 @@ function formatMultimodalContents(messages) {
 // =========================
 // 8. API Endpoints
 // =========================
-app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'Native Gemini Core', db: 'connected' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'Native Gemini 3.1 Flash-Lite Hardlock', db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -348,11 +343,11 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
     try {
-        const { messages, model } = req.body;
+        const { messages } = req.body;
         if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request format' });
         if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Google API Key Configuration Missing' });
 
-        const targetModel = sanitizeModelName(model);
+        const targetModel = 'gemini-3.1-flash-lite'; // 🔒 ABSOLUTE HARDLOCK
 
         const processedMessages = messages.map(msg => {
             if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
@@ -368,11 +363,6 @@ app.post('/api/chat', async (req, res) => {
             contents,
             generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
         };
-        
-        // Native Thinking Budget unlocked for advanced logical tasks
-        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
-            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-        }
         
         if (systemInstruction && systemInstruction.trim()) {
             payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
@@ -412,10 +402,10 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.post('/api/chat/stream', async (req, res) => {
-    const { messages, model } = req.body;
+    const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
 
-    const targetModel = sanitizeModelName(model);
+    const targetModel = 'gemini-3.1-flash-lite'; // 🔒 ABSOLUTE HARDLOCK
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -440,10 +430,6 @@ app.post('/api/chat/stream', async (req, res) => {
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
         const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
-        
-        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
-            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-        }
 
         if (systemInstruction && systemInstruction.trim()) {
             payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
@@ -550,12 +536,12 @@ app.listen(PORT, async () => {
     await initDatabase();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           StudySphere AI Workspace - Native Gemini Core    ║
+║           StudySphere AI Workspace - 3.1 Flash-Lite Core   ║
 ╠════════════════════════════════════════════════════════════╣
 ║ Server running on: http://localhost:${PORT}                  ║
-║ Mode: Fully Dynamic Website Settings Overrides             ║
+║ Mode: ABSOLUTE HARDLOCK (gemini-3.1-flash-lite)            ║
 ║ Gateway Route: generativelanguage.googleapis.com           ║
-║ Features: Max Output Tokens + Thinking Budget Unlocked     ║
+║ Features: Max Output Tokens (8192)                         ║
 ║ Universal Ingestion Capacity: 100MB Hard Lock              ║
 ║ Database Synergy: Seamless Railway PostgreSQL Logging      ║
 ╚════════════════════════════════════════════════════════════╝`);
