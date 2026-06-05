@@ -340,8 +340,8 @@ app.post('/api/auth/google', async (req, res) => {
         const result = await pool.query(upsertUserQuery, [payload.sub, payload.email, payload.name || payload.email, payload.picture]);
         const userId = result.rows[0].id;
 
-        await pool.query suicide= `INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-            [userId, 'login', 'System', `OAuth Session Lock: ${payload.email}`, 'Security Granted'];
+        await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+            [userId, 'login', 'System', `OAuth Session Lock: ${payload.email}`, 'Security Granted']);
 
         const sessionToken = jwt.sign({ userId, email: payload.email, name: payload.name }, JWT_SECRET, { expiresIn: '30d' });
         res.json({ user: { userId, sub: payload.sub, email: payload.email, name: payload.name, picture: payload.picture }, sessionToken });
