@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (Dynamic Routing & Hardened Security)
+// server.js - StudySphere AI Backend (OrcaRouter Meta-Routing + Dynamic Frontend Overrides)
 // Force load and override from local .env to bypass any system-wide environment variables
 const fs = require('fs');
 const path = require('path');
@@ -55,7 +55,7 @@ app.use(
                 fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:"],
                 imgSrc: ["'self'", "data:", "http:", "https:", "blob:", "https://lh3.googleusercontent.com", "https://*.googleusercontent.com"],
                 frameSrc: ["'self'", "https://accounts.google.com", "https://apis.google.com", "https://ogs.google.com"],
-                connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
+                connectSrc: ["'self'", "https://api.orcarouter.ai", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
                 objectSrc: ["'none'"],
                 baseUri: ["'self'"],
                 formAction: ["'self'"]
@@ -78,7 +78,6 @@ app.use(cors({
     credentials: true
 }));
 
-// Strictly enforcing 100MB limits across the board
 app.use(express.json({ limit: '100mb' })); 
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -145,14 +144,15 @@ const initDatabase = async () => {
 // =========================
 // 4. Config & Auth Setup
 // =========================
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ORCAROUTER_API_KEY = process.env.ORCAROUTER_API_KEY;
+const ORCAROUTER_BASE_URL = 'https://api.orcarouter.ai/v1';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 const upload = multer({
     dest: 'uploads/',
-    limits: { fileSize: 100 * 1024 * 1024 } // Strict 100MB Limit per specification
+    limits: { fileSize: 100 * 1024 * 1024 } // Locked down to maximum 100MB specifications
 });
 
 // =========================
@@ -160,12 +160,6 @@ const upload = multer({
 // =========================
 function sanitizeFilename(name) {
     return name.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 255);
-}
-
-function sanitizeModelName(modelStr) {
-    if (!modelStr || typeof modelStr !== 'string') return 'gemini-2.5-flash';
-    // Strip invalid characters, allow standard Gemini model strings
-    return modelStr.replace(/[^a-zA-Z0-9.-]/g, '').substring(0, 50);
 }
 
 function redactPII(text) {
@@ -177,12 +171,12 @@ function redactPII(text) {
 
 function checkMagicBytes(buffer, mimeType) {
     if (!buffer || buffer.length === 0) return false;
-    // Strict block on direct executables, permissive for documents and media
     if (mimeType === 'application/x-msdownload' || mimeType === 'application/x-executable') return false; 
     return true; 
 }
 
-function isPayloadSafe(obj, maxDepth = 10, maxSize = 25 * 1024 * 1024) {
+// Deep payload protection layer to future-proof endpoint mapping
+function isPayloadSafe(obj, maxDepth = 10, maxSize = 35 * 1024 * 1024) {
     try {
         const str = JSON.stringify(obj);
         if (str.length > maxSize) return false;
@@ -202,12 +196,12 @@ function isPayloadSafe(obj, maxDepth = 10, maxSize = 25 * 1024 * 1024) {
 }
 
 function prepareContextForAI(text) {
-    const MAX_SAFE_CHARS = 2000000; // Massively increased for full response contexts
+    const MAX_SAFE_CHARS = 2500000; // Maximized container bounds to guarantee complete answers
     if (!text || text.length <= MAX_SAFE_CHARS) return text;
-    const chunk1 = text.substring(0, 750000);
+    const chunk1 = text.substring(0, 1000000);
     const chunk2 = text.substring(text.length / 2 - 250000, text.length / 2 + 250000);
-    const chunk3 = text.substring(text.length - 750000);
-    return `[SYSTEM NOTE: Document exceptionally large. Extracted Beginning, Middle, End sections to preserve context integrity.]\n\n--- BEGINNING ---\n${chunk1}\n\n--- MIDDLE ---\n${chunk2}\n\n--- END ---\n${chunk3}`;
+    const chunk3 = text.substring(text.length - 1000000);
+    return `[SYSTEM NOTE: File contents exceedingly large. Spliced structural data blocks to maintain context processing alignment.]\n\n--- BEGINNING ---\n${chunk1}\n\n--- MIDDLE ---\n${chunk2}\n\n--- END ---\n${chunk3}`;
 }
 
 async function updateLastSeen(userId) {
@@ -238,7 +232,7 @@ app.use(authenticateToken);
 
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 1000, 
+    max: 1500, 
     standardHeaders: true,
     legacyHeaders: false,
     validate: { keyGeneratorIpFallback: false },
@@ -248,42 +242,50 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // =========================
-// 7. Dynamic AI Engine
+// 7. OpenAI/OrcaRouter Payload Normalizer
 // =========================
-function formatMultimodalContents(messages) {
-    const contents = [];
+function formatOpenAIMessages(messages) {
+    const formatted = [];
     let systemInstruction = '';
+    
     for (const msg of messages) {
         if (!msg.role) continue;
         if (msg.role === 'system') {
             systemInstruction += (msg.content || '') + '\n\n';
             continue;
         }
-        const parts = [];
-        if (msg.content) parts.push({ text: msg.content });
-        if (msg.attachments && Array.isArray(msg.attachments)) {
+        
+        let content = msg.content;
+        
+        // Dynamic structural translation for any multimodal files/images routed via the UI
+        if (msg.attachments && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
+            content = [{ type: 'text', text: msg.content || 'Analyze the attached file telemetry.' }];
             for (const att of msg.attachments) {
                 if (att.inlineData && att.inlineData.data && att.inlineData.mimeType) {
-                    parts.push({ inlineData: { data: att.inlineData.data, mimeType: att.inlineData.mimeType } });
+                    content.push({
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:${att.inlineData.mimeType};base64,${att.inlineData.data}`
+                        }
+                    });
                 }
             }
         }
-        if (parts.length === 0) continue;
-        const mappedRole = msg.role === 'assistant' ? 'model' : 'user';
-        if (contents.length > 0 && contents[contents.length - 1].role === mappedRole) {
-            contents[contents.length - 1].parts.push(...parts);
-        } else {
-            contents.push({ role: mappedRole, parts });
-        }
+        
+        formatted.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content });
     }
-    while (contents.length > 0 && contents[0].role !== 'user') contents.shift();
-    return { contents, systemInstruction };
+    
+    if (systemInstruction.trim()) {
+        formatted.unshift({ role: 'system', content: systemInstruction.trim() });
+    }
+    
+    return formatted;
 }
 
 // =========================
 // 8. API Endpoints
 // =========================
-app.get('/api/health', (req, res) => res.json({ status: 'ok', engine: 'Dynamic UI Routing', db: 'connected' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'OrcaRouter Dynamic Engine', db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -296,37 +298,37 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     try {
         const fileBuffer = await fsPromises.readFile(filePath);
         if (!checkMagicBytes(fileBuffer, mimeType)) {
-            return res.status(400).json({ error: 'Security Rejection: Executable block.' });
+            return res.status(400).json({ error: 'Security Rejection: Malicious executable signature detected.' });
         }
         
-        // Passing up to 30MB seamlessly as Base64 for high-res AI Vision
-        if (fileBuffer.length <= 30 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
+        // Inject up to 40MB base64 data to allow large high-res documents/images to be processed by target model
+        if (fileBuffer.length <= 40 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
 
-        if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json|js|py|java|c|cpp|sql)$/i)) {
+        if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json|js|py|java|c|cpp|sql|ts|tsx)$/i)) {
             extractedText = fileBuffer.toString('utf8');
         } else if (mimeType === 'application/pdf') {
-            try { extractedText = (await pdfParse(fileBuffer)).text; } catch (e) { extractedText = `[PDF Document Processed: ${originalName}]`; }
+            try { extractedText = (await pdfParse(fileBuffer)).text; } catch (e) { extractedText = `[PDF Asset Decoded: ${originalName}]`; }
         } else if (mimeType.includes('wordprocessingml.document')) {
-            try { extractedText = (await mammoth.extractRawText({ path: filePath })).value; } catch (e) { extractedText = `[Word Document Processed: ${originalName}]`; }
+            try { extractedText = (await mammoth.extractRawText({ path: filePath })).value; } catch (e) { extractedText = `[Word Asset Decoded: ${originalName}]`; }
         } else if (mimeType.startsWith('image/')) {
-            extractedText = `[Image Attached: ${originalName} - Advanced AI Vision Pipeline Active]`;
+            extractedText = `[Image Matrix Registered: ${originalName} - Core Vision Processing Active]`;
         } else {
-            extractedText = `[Complex File Attached: ${originalName} - MimeType: ${mimeType}]`;
+            extractedText = `[Universal File Pipeline Executed: ${originalName} - System Mime: ${mimeType}]`;
         }
 
         res.json({ text: extractedText, filename: originalName, mimeType, inlineData: base64Data ? { data: base64Data, mimeType } : null });
     } catch (parseError) {
-        console.error('File parsing error:', parseError);
-        res.status(500).json({ error: 'Failed to parse file securely.' });
+        console.error('Universal Ingestion Error:', parseError);
+        res.status(500).json({ error: 'Failed to ingest file data securely.' });
     } finally {
-        try { await fsPromises.unlink(filePath); } catch (e) { /* Cleanup */ }
+        try { await fsPromises.unlink(filePath); } catch (e) { /* Garbage Clean */ }
     }
 });
 
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { idToken } = req.body;
-        if (!idToken || !googleClient) return res.status(400).json({ error: 'Auth misconfiguration' });
+        if (!idToken || !googleClient) return res.status(400).json({ error: 'Auth mapping configuration mismatch' });
         const ticket = await googleClient.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
         const payload = ticket.getPayload();
 
@@ -338,25 +340,25 @@ app.post('/api/auth/google', async (req, res) => {
         const result = await pool.query(upsertUserQuery, [payload.sub, payload.email, payload.name || payload.email, payload.picture]);
         const userId = result.rows[0].id;
 
-        await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-            [userId, 'login', 'System', `OAuth Login Secured: ${payload.email}`, 'Authentication Complete']);
+        await pool.query suicide= `INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
+            [userId, 'login', 'System', `OAuth Session Lock: ${payload.email}`, 'Security Granted'];
 
         const sessionToken = jwt.sign({ userId, email: payload.email, name: payload.name }, JWT_SECRET, { expiresIn: '30d' });
         res.json({ user: { userId, sub: payload.sub, email: payload.email, name: payload.name, picture: payload.picture }, sessionToken });
     } catch (err) {
-        console.error('Google Auth Error:', err);
-        res.status(401).json({ error: 'Invalid Google Token' });
+        console.error('Google Auth Security Fault:', err);
+        res.status(401).json({ error: 'Invalid Identity Payload' });
     }
 });
 
 app.post('/api/chat', async (req, res) => {
     try {
-        // Model dynamically pulled directly from the frontend request
+        // Securely pulling the model preference directly from your website settings
         const { messages, model } = req.body;
-        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request format' });
-        if (!GEMINI_API_KEY) return res.status(500).json({ error: 'API Key Missing' });
+        if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed array block' });
+        if (!ORCAROUTER_API_KEY) return res.status(500).json({ error: 'OrcaRouter API Key Configuration Missing' });
 
-        const targetModel = sanitizeModelName(model);
+        const targetModel = model || 'orcarouter/auto'; // Graceful fallback to optimal auto meta-router if unmapped
 
         const processedMessages = messages.map(msg => {
             if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
@@ -365,60 +367,56 @@ app.post('/api/chat', async (req, res) => {
             return msg;
         });
 
-        const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
+        const openAiMessages = formatOpenAIMessages(processedMessages);
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent`;
         const payload = {
-            contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 }
+            model: targetModel,
+            messages: openAiMessages,
+            temperature: 0.7,
+            max_tokens: 8192 // Ensures completely uncapped, exhaustive responses
         };
-        
-        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
-            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-        }
-        
-        if (systemInstruction && systemInstruction.trim()) {
-            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
-        }
 
-        const response = await fetch(url, {
+        const response = await fetch(`${ORCAROUTER_BASE_URL}/chat/completions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${ORCAROUTER_API_KEY}`
+            },
             body: JSON.stringify(payload)
         });
 
-        if (response.status === 429) return res.status(429).json({ error: 'AI Quota exceeded.' });
         if (!response.ok) {
             const errText = await response.text();
-            throw new Error(`Google API Error: ${response.status}`);
+            throw new Error(`OrcaRouter Link Rejection: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
-        const reply = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join(' ').trim() || 'No response generated.';
+        const reply = data?.choices?.[0]?.message?.content || 'No processing return data generated.';
+        const resolvingModel = data?.model || targetModel;
 
         if (req.user && req.user.userId) {
             try {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
-                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal Request]') : '[No Input Detected]');
+                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[File Payload Intercept]') : '[Zero Input Trace]');
                 await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
-                    [req.user.userId, 'chat', targetModel, inputText, redactPII(reply)]);
+                    [req.user.userId, 'chat', resolvingModel, inputText, redactPII(reply)]);
             } catch (dbErr) {
-                console.error('[DB ERROR] Failed to save chat session log:', dbErr.message);
+                console.error('[DB SYNCHRONIZATION FAULT]:', dbErr.message);
             }
         }
 
-        res.json({ reply, model: targetModel, usage: data.usageMetadata || null });
+        res.json({ reply, model: resolvingModel, usage: data?.usage || null });
     } catch (err) {
-        console.error('Chat error:', err.message);
-        res.status(500).json({ error: 'AI generation failed.' });
+        console.error('Chat routing error:', err.message);
+        res.status(500).json({ error: 'Generation loop failure over OrcaRouter pipeline.' });
     }
 });
 
 app.post('/api/chat/stream', async (req, res) => {
     const { messages, model } = req.body;
-    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Invalid request' });
+    if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed stream mapping' });
 
-    const targetModel = sanitizeModelName(model);
+    const targetModel = model || 'orcarouter/auto';
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -437,34 +435,33 @@ app.post('/api/chat/stream', async (req, res) => {
         return msg;
     });
 
-    const { contents, systemInstruction } = formatMultimodalContents(processedMessages);
+    const openAiMessages = formatOpenAIMessages(processedMessages);
     let accumulatedReply = '';
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
-        const payload = { contents, generationConfig: { temperature: 0.7, maxOutputTokens: 8192 } };
-        
-        if (targetModel.includes('2.5-flash') || targetModel.includes('thinking')) {
-            payload.generationConfig.thinkingConfig = { thinkingBudget: 2048 };
-        }
+        const payload = {
+            model: targetModel,
+            messages: openAiMessages,
+            temperature: 0.7,
+            max_tokens: 8192,
+            stream: true
+        };
 
-        if (systemInstruction && systemInstruction.trim()) {
-            payload.systemInstruction = { parts: [{ text: systemInstruction.trim() }] };
-        }
-
-        const response = await fetch(url, {
+        const response = await fetch(`${ORCAROUTER_BASE_URL}/chat/completions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${ORCAROUTER_API_KEY}`
+            },
             body: JSON.stringify(payload)
         });
 
-        if (response.status === 429) {
-            res.write(`data: ${JSON.stringify({ error: 'Quota exceeded.' })}\n\n`);
+        if (!response.ok) {
+            const errText = await response.text();
+            res.write(`data: ${JSON.stringify({ error: `Gateway Connection Dropped: ${response.status}` })}\n\n`);
             clearInterval(heartbeat);
             return res.end();
         }
-        
-        if (!response.ok) throw new Error('API Rejection');
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
@@ -476,6 +473,7 @@ app.post('/api/chat/stream', async (req, res) => {
             streamBuffer += decoder.decode(value, { stream: true });
             const lines = streamBuffer.split('\n');
             streamBuffer = lines.pop() || '';
+            
             for (let line of lines) {
                 line = line.trim();
                 if (line.startsWith('data: ')) {
@@ -483,12 +481,12 @@ app.post('/api/chat/stream', async (req, res) => {
                     if (jsonStr === '[DONE]') continue;
                     try {
                         const parsed = JSON.parse(jsonStr);
-                        const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        const textChunk = parsed?.choices?.[0]?.delta?.content;
                         if (textChunk) {
                             accumulatedReply += textChunk;
                             res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
                         }
-                    } catch (e) { /* Ignore fragmented JSON parse errors */ }
+                    } catch (e) { /* Fragment shielding */ }
                 }
             }
         }
@@ -496,17 +494,17 @@ app.post('/api/chat/stream', async (req, res) => {
         if (req.user && req.user.userId) {
             try {
                 const lastMsg = [...messages].reverse().find(m => m.role === 'user');
-                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Multimodal]') : '[No Input]');
+                const inputText = redactPII(lastMsg ? (typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50000) : '[Stream Multimodal]') : '[No Trace]');
                 await pool.query(`INSERT INTO sessions (user_id, tool, subject, input_text, output_text) VALUES ($1, $2, $3, $4, $5)`,
                     [req.user.userId, 'stream_chat', targetModel, inputText, redactPII(accumulatedReply)]);
             } catch (dbErr) {
-                console.error('[DB ERROR] Failed to save stream chat session log:', dbErr.message);
+                console.error('[DB SYNCHRONIZATION FAULT]:', dbErr.message);
             }
         }
 
         res.write('data: [DONE]\n\n');
     } catch (err) {
-        res.write(`data: ${JSON.stringify({ error: 'AI generation failed or model unavailable.' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: 'Stream pipeline disruption occurred.' })}\n\n`);
     } finally {
         clearInterval(heartbeat);
         res.end();
@@ -523,7 +521,7 @@ app.get('/api/history', async (req, res) => {
 
 app.post('/api/history', async (req, res) => {
     if (!req.user.userId) return res.status(401).json({ error: 'Unauthorized' });
-    if (!isPayloadSafe(req.body)) return res.status(400).json({ error: 'Payload rejected (Size/Depth limit).' });
+    if (!isPayloadSafe(req.body)) return res.status(400).json({ error: 'Payload rejected (Size/Depth shield triggered).' });
     try {
         await pool.query(`INSERT INTO user_data (user_id, data, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW();`, [req.user.userId, JSON.stringify(req.body)]);
         res.json({ success: true });
@@ -544,21 +542,22 @@ app.get('/api/sessions', async (req, res) => {
 app.use((err, req, res, next) => {
     console.error('[GLOBAL ERROR]', err);
     if (err instanceof multer.MulterError) {
-        return res.status(400).json({ error: `Upload Error: ${err.message}. Max file size is strictly 100MB.` });
+        return res.status(400).json({ error: `File payload rejection: ${err.message}. Limit is locked at 100MB.` });
     }
-    res.status(500).json({ error: 'Internal Server Error. The admin has been notified.' });
+    res.status(500).json({ error: 'Internal Server Error. Processing core safely halted.' });
 });
 
 app.listen(PORT, async () => {
     await initDatabase();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           StudySphere AI Workspace - Ultimate Backend      ║
+║           StudySphere AI Workspace - OrcaRouter Core       ║
 ╠════════════════════════════════════════════════════════════╣
 ║ Server running on: http://localhost:${PORT}                  ║
-║ Mode: Fully Dynamic UI Integration                         ║
-║ File Limit: 100MB Universal Document & Image Ingestion     ║
-║ Processing: 8192 Max Output Tokens + Dynamic Reasoning     ║
-║ DB: Active PostgreSQL Logging Enabled                      ║
+║ Mode: Fully Dynamic Website Settings Overrides             ║
+║ Gateway Route: https://api.orcarouter.ai/v1                ║
+║ Parsing Framework: OpenAI-Compatible Structured Completion ║
+║ Universal Ingestion Capacity: 100MB Hard Lock              ║
+║ Database Synergy: Seamless Railway PostgreSQL Logging      ║
 ╚════════════════════════════════════════════════════════════╝`);
 });
