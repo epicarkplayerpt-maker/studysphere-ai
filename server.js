@@ -1,4 +1,4 @@
-// server.js - StudySphere AI Backend (OrcaRouter Meta-Routing + Dynamic Frontend Overrides)
+// server.js - StudySphere AI Backend (Groq LPU High-Speed Core)
 // Force load and override from local .env to bypass any system-wide environment variables
 const fs = require('fs');
 const path = require('path');
@@ -55,7 +55,7 @@ app.use(
                 fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "data:"],
                 imgSrc: ["'self'", "data:", "http:", "https:", "blob:", "https://lh3.googleusercontent.com", "https://*.googleusercontent.com"],
                 frameSrc: ["'self'", "https://accounts.google.com", "https://apis.google.com", "https://ogs.google.com"],
-                connectSrc: ["'self'", "https://api.orcarouter.ai", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
+                connectSrc: ["'self'", "https://api.groq.com", "https://oauth2.googleapis.com", "https://accounts.google.com", "https://*.googleusercontent.com", "https://*.googleapis.com", "https://cdnjs.cloudflare.com", "ws:", "wss:"],
                 objectSrc: ["'none'"],
                 baseUri: ["'self'"],
                 formAction: ["'self'"]
@@ -83,7 +83,7 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =========================
-// 3. Postgres Connection (Railway Optimized)
+// 3. Postgres Connection
 // =========================
 const isProduction = process.env.NODE_ENV === 'production';
 const useSSL = isProduction && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('internal');
@@ -144,15 +144,15 @@ const initDatabase = async () => {
 // =========================
 // 4. Config & Auth Setup
 // =========================
-const ORCAROUTER_API_KEY = process.env.ORCAROUTER_API_KEY;
-const ORCAROUTER_BASE_URL = 'https://api.orcarouter.ai/v1';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1'; // Standardized OpenAI compat
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 const upload = multer({
     dest: 'uploads/',
-    limits: { fileSize: 100 * 1024 * 1024 } // Locked down to maximum 100MB specifications
+    limits: { fileSize: 100 * 1024 * 1024 }
 });
 
 // =========================
@@ -175,7 +175,6 @@ function checkMagicBytes(buffer, mimeType) {
     return true; 
 }
 
-// Deep payload protection layer to future-proof endpoint mapping
 function isPayloadSafe(obj, maxDepth = 10, maxSize = 35 * 1024 * 1024) {
     try {
         const str = JSON.stringify(obj);
@@ -196,7 +195,7 @@ function isPayloadSafe(obj, maxDepth = 10, maxSize = 35 * 1024 * 1024) {
 }
 
 function prepareContextForAI(text) {
-    const MAX_SAFE_CHARS = 2500000; // Maximized container bounds to guarantee complete answers
+    const MAX_SAFE_CHARS = 2500000;
     if (!text || text.length <= MAX_SAFE_CHARS) return text;
     const chunk1 = text.substring(0, 1000000);
     const chunk2 = text.substring(text.length / 2 - 250000, text.length / 2 + 250000);
@@ -242,7 +241,7 @@ const apiLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // =========================
-// 7. OpenAI/OrcaRouter Payload Normalizer
+// 7. Groq Payload Normalizer
 // =========================
 function formatOpenAIMessages(messages) {
     const formatted = [];
@@ -257,7 +256,6 @@ function formatOpenAIMessages(messages) {
         
         let content = msg.content;
         
-        // Dynamic structural translation for any multimodal files/images routed via the UI
         if (msg.attachments && Array.isArray(msg.attachments) && msg.attachments.length > 0) {
             content = [{ type: 'text', text: msg.content || 'Analyze the attached file telemetry.' }];
             for (const att of msg.attachments) {
@@ -285,7 +283,7 @@ function formatOpenAIMessages(messages) {
 // =========================
 // 8. API Endpoints
 // =========================
-app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'OrcaRouter Dynamic Engine', db: 'connected' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', provider: 'Groq High-Speed Core', db: 'connected' }));
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
@@ -301,7 +299,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'Security Rejection: Malicious executable signature detected.' });
         }
         
-        // Inject up to 40MB base64 data to allow large high-res documents/images to be processed by target model
         if (fileBuffer.length <= 40 * 1024 * 1024) base64Data = fileBuffer.toString('base64');
 
         if (mimeType.startsWith('text/') || originalName.match(/\.(txt|md|csv|html|xml|json|js|py|java|c|cpp|sql|ts|tsx)$/i)) {
@@ -353,12 +350,12 @@ app.post('/api/auth/google', async (req, res) => {
 
 app.post('/api/chat', async (req, res) => {
     try {
-        // Securely pulling the model preference directly from your website settings
         const { messages, model } = req.body;
         if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed array block' });
-        if (!ORCAROUTER_API_KEY) return res.status(500).json({ error: 'OrcaRouter API Key Configuration Missing' });
+        if (!GROQ_API_KEY) return res.status(500).json({ error: 'Groq API Key Configuration Missing' });
 
-        const targetModel = model || 'orcarouter/auto'; // Graceful fallback to optimal auto meta-router if unmapped
+        // Fallback to Groq's high-power Llama 3.3 70B if none provided by UI
+        const targetModel = model || 'llama-3.3-70b-versatile'; 
 
         const processedMessages = messages.map(msg => {
             if (msg.role === 'user' && typeof msg.content === 'string' && msg.content.length > 2000000) {
@@ -373,21 +370,21 @@ app.post('/api/chat', async (req, res) => {
             model: targetModel,
             messages: openAiMessages,
             temperature: 0.7,
-            max_tokens: 8192 // Ensures completely uncapped, exhaustive responses
+            max_tokens: 8192 
         };
 
-        const response = await fetch(`${ORCAROUTER_BASE_URL}/chat/completions`, {
+        const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${ORCAROUTER_API_KEY}`
+                'Authorization': `Bearer ${GROQ_API_KEY}`
             },
             body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
             const errText = await response.text();
-            throw new Error(`OrcaRouter Link Rejection: ${response.status} - ${errText}`);
+            throw new Error(`Groq Link Rejection: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
@@ -408,7 +405,7 @@ app.post('/api/chat', async (req, res) => {
         res.json({ reply, model: resolvingModel, usage: data?.usage || null });
     } catch (err) {
         console.error('Chat routing error:', err.message);
-        res.status(500).json({ error: 'Generation loop failure over OrcaRouter pipeline.' });
+        res.status(500).json({ error: 'Generation loop failure over Groq pipeline.' });
     }
 });
 
@@ -416,7 +413,7 @@ app.post('/api/chat/stream', async (req, res) => {
     const { messages, model } = req.body;
     if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'Malformed stream mapping' });
 
-    const targetModel = model || 'orcarouter/auto';
+    const targetModel = model || 'llama-3.3-70b-versatile';
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -447,11 +444,11 @@ app.post('/api/chat/stream', async (req, res) => {
             stream: true
         };
 
-        const response = await fetch(`${ORCAROUTER_BASE_URL}/chat/completions`, {
+        const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${ORCAROUTER_API_KEY}`
+                'Authorization': `Bearer ${GROQ_API_KEY}`
             },
             body: JSON.stringify(payload)
         });
@@ -551,12 +548,12 @@ app.listen(PORT, async () => {
     await initDatabase();
     console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           StudySphere AI Workspace - OrcaRouter Core       ║
+║           StudySphere AI Workspace - Groq LPU Core         ║
 ╠════════════════════════════════════════════════════════════╣
 ║ Server running on: http://localhost:${PORT}                  ║
 ║ Mode: Fully Dynamic Website Settings Overrides             ║
-║ Gateway Route: https://api.orcarouter.ai/v1                ║
-║ Parsing Framework: OpenAI-Compatible Structured Completion ║
+║ Gateway Route: https://api.groq.com/openai/v1              ║
+║ Speed: Ultra-Low Latency Inference                         ║
 ║ Universal Ingestion Capacity: 100MB Hard Lock              ║
 ║ Database Synergy: Seamless Railway PostgreSQL Logging      ║
 ╚════════════════════════════════════════════════════════════╝`);
