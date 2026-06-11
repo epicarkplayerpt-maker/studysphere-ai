@@ -10,6 +10,76 @@ export interface SearchResult {
  * Searches DuckDuckGo HTML search page and parses the results.
  * This is free, requires no API key, and is fully local.
  */
+const PREFERRED_DOMAINS = [
+  'wikipedia.org',
+  'arxiv.org',
+  'ncbi.nlm.nih.gov',
+  'nih.gov',
+  'edu',
+  'gov',
+  'org',
+  'nature.com',
+  'sciencedirect.com',
+  'springer.com',
+  'ieee.org',
+  'github.com',
+  'stackoverflow.com',
+  'mozilla.org',
+  'microsoft.com',
+  'google.com',
+  'nytimes.com',
+  'reuters.com',
+  'britannica.com',
+  'w3.org'
+];
+
+const BLACKLIST_DOMAINS = [
+  'pinterest.com',
+  'ask.com',
+  'answers.yahoo.com',
+  'softonic.com',
+  'coupon',
+  'spam'
+];
+
+/**
+ * Calculates a quality score for search results based on domain reputation.
+ */
+function scoreResult(urlStr: string): number {
+  try {
+    const parsedUrl = new URL(urlStr);
+    const host = parsedUrl.hostname.toLowerCase();
+    
+    // Check blacklist first - discard completely if blacklisted
+    for (const spam of BLACKLIST_DOMAINS) {
+      if (host.includes(spam)) {
+        return -100;
+      }
+    }
+    
+    let score = 0;
+    
+    // Check preferred authoritative/technical domains
+    for (const pref of PREFERRED_DOMAINS) {
+      if (host === pref || host.endsWith('.' + pref)) {
+        score += 15;
+        break; 
+      }
+    }
+    
+    // Extra weight for official educational and government documents
+    if (host.endsWith('.edu') || host.endsWith('.gov')) {
+      score += 20;
+    } else if (host.endsWith('.org')) {
+      score += 10;
+    }
+    
+    return score;
+  } catch (e) {
+    return -100; 
+  }
+}
+
 /**
  * Helper to perform the actual search request and parse DuckDuckGo HTML results.
  */
@@ -35,8 +105,8 @@ async function executeSearch(query: string): Promise<SearchResult[]> {
   // Parse using string splitting to be lightweight and zero-dependency
   const resultBlocks = html.split(/<div class="result results_links[^"]*">/);
   
-  // Skip the first block as it's the HTML header/intro
-  for (let i = 1; i < resultBlocks.length && results.length < 8; i++) {
+  // Extract up to 24 results
+  for (let i = 1; i < resultBlocks.length && results.length < 24; i++) {
     const block = resultBlocks[i];
     
     // Extract title and URL: <a ... class="...result__a..." ... href="[URL]">[TITLE]</a>
@@ -97,8 +167,17 @@ export async function searchWeb(query: string): Promise<SearchResult[]> {
       results = await executeSearch(query);
     }
 
-    logger.info('Web search for "%s" completed. Returned %d results.', query, results.length);
-    return results;
+    // Rank results based on domain reputation
+    const scoredResults = results
+      .map(r => ({ ...r, score: scoreResult(r.url) }))
+      .filter(r => r.score > -50); // Filter out blacklisted/spam completely
+
+    scoredResults.sort((a, b) => b.score - a.score);
+
+    const sortedResults = scoredResults.map(({ title, url, snippet }) => ({ title, url, snippet }));
+
+    logger.info('Web search for "%s" completed. Sorted and returned %d results.', query, sortedResults.length);
+    return sortedResults;
   } catch (error: any) {
     logger.warn('Web search failed for query "%s": %s', query, error.message || error);
     return []; // Return empty list on failure

@@ -193,8 +193,11 @@ ${query}
    */
   async getEmbedding(text: string): Promise<number[]> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
-      const result = await model.embedContent(text);
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-embedding-2' });
+      const result = await model.embedContent({
+        content: { role: 'user', parts: [{ text }] },
+        outputDimensionality: 768
+      } as any);
       if (!result.embedding || !result.embedding.values) {
         throw new Error('Embedding values not found in response');
       }
@@ -211,12 +214,13 @@ ${query}
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     try {
       if (texts.length === 0) return [];
-      const model = this.genAI.getGenerativeModel({ model: 'text-embedding-004' });
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-embedding-2' });
       const response = await model.batchEmbedContents({
         requests: texts.map(t => ({
           content: { role: 'user', parts: [{ text: t }] },
-          model: 'models/text-embedding-004'
-        }))
+          model: 'models/gemini-embedding-2',
+          outputDimensionality: 768
+        } as any))
       });
       if (!response.embeddings) {
         throw new Error('Embeddings list not found in response');

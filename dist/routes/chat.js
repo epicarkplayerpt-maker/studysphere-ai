@@ -52,7 +52,7 @@ You can perform and assist with all tools:
 5. Master Study Syllabus: Aggregating all binder documents into a structured master syllabus.
 
 Interactive Study Workspaces:
-You can embed fully interactive study tools directly inside your chat response to let the user study inline. Output the following exact XML tags in your response when the user asks to start/generate them:
+[CRITICAL DESIGN RULE] Do NOT automatically embed or generate interactive study tools (quizzes, cards, syllabi, weakness reports) for normal questions. Only output the following exact XML tags when the user explicitly asks to 'generate a quiz', 'create flashcards', 'find weaknesses', 'start podcast/audio review', 'create syllabus', or similar direct request commands:
 - Smart Study Cards: Output \`<study-artifact type="flashcards" binderId="BINDER_ID"></study-artifact>\`
 - Practice Exam / Quiz: Output \`<study-artifact type="quiz" binderId="BINDER_ID" questionCount="NUM"></study-artifact>\`
 - Study Weakness Finder: Output \`<study-artifact type="weaknesses" binderId="BINDER_ID"></study-artifact>\`
@@ -92,7 +92,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
                 webSearchContextText = searchResults
                     .map((res, idx) => `[Result #${idx + 1}]\nTitle: ${res.title}\nURL: ${res.url}\nExcerpt: ${res.snippet}`)
                     .join('\n\n');
-                systemInstruction += `\n\nYou have access to relevant web search results below under <web_search_results>. Integrate this information in your response. Cite the title and provide URL links where helpful.`;
+                systemInstruction += `\n\nYou have access to exactly ${searchResults.length} relevant web search results below under <web_search_results>. Integrate this information in your response. Cite the title and provide URL links where helpful. When answering, state the actual number of sources (${searchResults.length}) you analyzed for this response.`;
             }
             else {
                 res.write(`data: ${JSON.stringify({ thought: 'Web search returned no results. Relying on default knowledge.' })}\n\n`);
@@ -169,7 +169,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
         const documentAttachments = [];
         if (binderDocs.length > 0) {
             // Find the active document name from screen context (if any)
-            const selectedDocMatch = userQuery.match(/- Selected Document: "([^"]+)"/);
+            const selectedDocMatch = contextExplanation ? contextExplanation.match(/- Selected Document: "([^"]+)"/) : null;
             const selectedDocName = selectedDocMatch ? selectedDocMatch[1].toLowerCase() : '';
             for (const doc of binderDocs) {
                 if (!doc.base64)

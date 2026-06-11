@@ -22,10 +22,11 @@ async function parseFileBuffer(buffer, mimeType, filename) {
         else if (mimeType === 'application/pdf' || lowerFilename.endsWith('.pdf')) {
             try {
                 let pdfParser = pdf_parse_1.default;
-                if (typeof pdfParser !== 'function') {
-                    pdfParser = pdf_parse_1.default.default;
+                // Unwrap default export if present
+                if (pdfParser && pdfParser.default) {
+                    pdfParser = pdfParser.default;
                 }
-                // Handle class-based parser (Mehmet Kozan's version)
+                // 1. Try class-based parser (Mehmet Kozan's version)
                 if (pdfParser && typeof pdfParser.PDFParse === 'function') {
                     const parser = new pdfParser.PDFParse({ data: buffer });
                     const result = await parser.getText();
@@ -33,12 +34,24 @@ async function parseFileBuffer(buffer, mimeType, filename) {
                     await parser.destroy();
                     return text;
                 }
-                // Handle fallback standard function
-                if (typeof pdfParser !== 'function') {
-                    pdfParser = require('pdf-parse');
-                }
+                // 2. Try standard function-based parser
                 if (typeof pdfParser === 'function') {
                     const data = await pdfParser(buffer);
+                    return data.text || '';
+                }
+                // 3. Last resort require fallback
+                const rawPdfParse = require('pdf-parse');
+                // 3a. Try class-based parser on required module
+                if (rawPdfParse && typeof rawPdfParse.PDFParse === 'function') {
+                    const parser = new rawPdfParse.PDFParse({ data: buffer });
+                    const result = await parser.getText();
+                    const text = result?.text || '';
+                    await parser.destroy();
+                    return text;
+                }
+                // 3b. Try function-based parser on required module
+                if (typeof rawPdfParse === 'function') {
+                    const data = await rawPdfParse(buffer);
                     return data.text || '';
                 }
                 throw new Error('No functional PDF parser found');
