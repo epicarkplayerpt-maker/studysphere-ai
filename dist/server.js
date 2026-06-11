@@ -64,6 +64,7 @@ app.use((0, helmet_1.default)({
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
     : [
+        'https://studysphere-ai.up.railway.app',
         'https://studysphere-ai-production.up.railway.app',
         'http://localhost:3000',
         'http://localhost:3001',
@@ -75,7 +76,8 @@ app.use((0, cors_1.default)({
             callback(null, true);
         }
         else {
-            callback(new Error('CORS blocked by security settings.'));
+            logger_1.default.warn(`CORS blocked for origin: ${origin}`);
+            callback(null, false);
         }
     },
     credentials: true,
