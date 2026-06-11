@@ -38,7 +38,7 @@ const health_1 = __importDefault(require("./routes/health"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const app = (0, express_1.default)();
 app.set('trust proxy', 1); // Required for Railway's reverse proxy so rate limiting uses real client IPs
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 // ==========================================
 // 1. Security Headers & CORS Configuration
 // ==========================================
