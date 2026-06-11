@@ -1,0 +1,111 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/client"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+model User {
+  id                 String         @id @default(uuid())
+  email              String         @unique
+  passwordHash       String
+  customInstructions String?        @db.Text
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  sessions           Session[]
+  binders            Binder[]
+  studyHistory       StudyHistory[]
+  flashcards         Flashcard[]
+  tokenUsages        TokenUsage[]
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token         String   @unique
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  ipAddress     String?
+  userAgent     String?
+  lastActiveAt  DateTime @default(now())
+  activeSeconds Int      @default(0)
+}
+
+model Binder {
+  id          String     @id @default(uuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[]
+}
+
+model Document {
+  id        String          @id @default(uuid())
+  binderId  String
+  binder    Binder          @relation(fields: [binderId], references: [id], onDelete: Cascade)
+  name      String
+  fileType  String
+  content   String          @db.Text
+  base64    String?         @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  chunks    DocumentChunk[]
+}
+
+model StudyHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query     String   @db.Text
+  response  String   @db.Text
+  createdAt DateTime @default(now())
+}
+
+model Flashcard {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  front      String   @db.Text
+  back       String   @db.Text
+  interval   Int      @default(0) // Spaced repetition interval in days
+  easeFactor Float    @default(2.5) // Difficulty tracking
+  reps       Int      @default(0) // Number of consecutive successful recalls
+  nextReview DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model DocumentChunk {
+  id         String                     @id @default(uuid())
+  documentId String
+  document   Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String                     @db.Text
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                   @default(now())
+
+  @@index([documentId])
+}
+
+model TokenUsage {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modelName        String
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  action           String
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+}
+

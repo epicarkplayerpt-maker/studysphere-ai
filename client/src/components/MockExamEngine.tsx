@@ -1,0 +1,368 @@
+import React, { useState, useEffect } from 'react';
+import { Award, BookOpen, AlertTriangle, ArrowRight, RefreshCw, Check } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+
+interface Binder {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+interface Question {
+  id: number;
+  type: 'mcq' | 'short' | 'code';
+  question: string;
+  options: string[];
+  correctAnswer: string;
+}
+
+interface GradeResponse {
+  score: number;
+  questionGrades: {
+    question: string;
+    userAnswer: string;
+    score: number;
+    feedback: string;
+  }[];
+  gapAnalysis: string;
+  suggestedPathways: string[];
+}
+
+interface MockExamEngineProps {
+  initialBinderId?: string;
+  onGradeCompleted?: (gapAnalysis: string, pathways: string[]) => void;
+}
+
+export const MockExamEngine: React.FC<MockExamEngineProps> = ({ initialBinderId, onGradeCompleted }) => {
+  const [binders, setBinders] = useState<Binder[]>([]);
+  const [selectedBinderId, setSelectedBinderId] = useState<string>(initialBinderId || '');
+  const [questionCount, setQuestionCount] = useState<number>(5);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState<boolean>(false);
+  const [grading, setGrading] = useState<boolean>(false);
+  const [gradeResult, setGradeResult] = useState<GradeResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBinders = async () => {
+      try {
+        const res = await fetch('/api/study/binders', {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to retrieve binders.');
+        const data = await res.json();
+        setBinders(data.binders || []);
+        
+        if (initialBinderId) {
+          setSelectedBinderId(initialBinderId);
+        } else if (data.binders && data.binders.length > 0) {
+          setSelectedBinderId(data.binders[0].id);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Error fetching binders.');
+      }
+    };
+    fetchBinders();
+  }, [initialBinderId]);
+
+  const handleGenerateExam = async () => {
+    if (!selectedBinderId) return;
+    setLoading(true);
+    setError(null);
+    setGradeResult(null);
+    setQuestions([]);
+    setUserAnswers({});
+
+    try {
+      const res = await fetch(`/api/study/binders/${selectedBinderId}/exam`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ questionCount }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to generate mock exam.');
+      }
+
+      const data = await res.json();
+      setQuestions(data.questions || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate exam.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnswerChange = (questionId: number, value: string) => {
+    setUserAnswers(prev => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleSubmitExam = async () => {
+    setGrading(true);
+    setError(null);
+
+    const quizAnswers = questions.map(q => ({
+      question: q.question,
+      userAnswer: userAnswers[q.id] || '',
+    }));
+
+    try {
+      const res = await fetch('/api/study/exam/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ quizAnswers }),
+      });
+
+      if (!res.ok) throw new Error('Failed to grade exam answers.');
+      const data: GradeResponse = await res.json();
+      setGradeResult(data);
+
+      // Elevate results to parent right sidebar
+      if (onGradeCompleted) {
+        onGradeCompleted(data.gapAnalysis, data.suggestedPathways);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to grade mock exam.');
+    } finally {
+      setGrading(false);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-3xl mx-auto space-y-6">
+      <div className="flex items-center gap-2 border-b border-border pb-4">
+        <Award className="h-5 w-5 text-accent" />
+        <h2 className="text-xl font-bold text-foreground font-sans">Practice Exams</h2>
+      </div>
+
+      {/* Configuration Header */}
+      {!questions.length && !loading && (
+        <div className="glass-panel p-6 rounded-2xl space-y-4 shadow-xl">
+          <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 font-sans">
+            <BookOpen className="h-4 w-4 text-primary" />
+            Set Up Your Practice Exam
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div>
+              <label className="block text-xs text-muted mb-1">Select Study Binder</label>
+              <select
+                value={selectedBinderId}
+                onChange={(e) => setSelectedBinderId(e.target.value)}
+                className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="" disabled>-- Select a Binder --</option>
+                {binders.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Number of Questions</label>
+              <select
+                value={questionCount}
+                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value={3}>3 Questions</option>
+                <option value={5}>5 Questions</option>
+                <option value={10}>10 Questions</option>
+                <option value={15}>15 Questions</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={handleGenerateExam}
+            disabled={!selectedBinderId}
+            className="w-full py-2.5 bg-primary text-primary-foreground hover:opacity-90 disabled:bg-secondary disabled:text-muted rounded-lg font-semibold text-sm transition mt-2 shadow-lg"
+          >
+            Start Practice Exam
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex flex-col justify-center items-center py-24 gap-3 bg-secondary/35 border border-border rounded-2xl">
+          <RefreshCw className="h-8 w-8 text-primary animate-spin" />
+          <span className="text-sm text-foreground">Generating customized practice exam...</span>
+          <span className="text-xs text-muted">Evaluating binder notes & source files for conceptual points</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-950/20 border border-red-900/30 text-red-300 p-4 rounded-xl text-center text-sm font-medium">
+          {error}
+        </div>
+      )}
+
+      {/* Question Sheet */}
+      {questions.length > 0 && !gradeResult && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-secondary/80 p-4 rounded-xl border border-border">
+            <span className="text-xs text-muted font-semibold uppercase tracking-wider">Practice Exam Active</span>
+            <button
+              onClick={() => { setQuestions([]); setGradeResult(null); }}
+              className="text-xs text-muted hover:text-foreground"
+            >
+              Cancel Exam
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {questions.map((q, idx) => (
+              <div key={q.id} className="glass-panel p-6 rounded-2xl space-y-4 shadow-lg">
+                <div className="flex items-start gap-3">
+                  <span className="flex items-center justify-center bg-input border border-border h-6 w-6 text-xs text-primary rounded-full font-bold">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 space-y-1">
+                    <span className="text-[10px] uppercase font-semibold text-muted tracking-wider bg-input px-2 py-0.5 rounded border border-border">
+                      {q.type}
+                    </span>
+                    <p className="text-sm text-foreground leading-relaxed pt-1.5 font-medium">{q.question}</p>
+                  </div>
+                </div>
+
+                {/* Question Input Options */}
+                {q.type === 'mcq' ? (
+                  <div className="grid grid-cols-1 gap-2 pl-9">
+                    {q.options.map((opt) => (
+                      <label
+                        key={opt}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer text-xs font-medium transition ${
+                          userAnswers[q.id] === opt
+                            ? 'bg-primary/10 border-primary text-foreground'
+                            : 'bg-input border-border text-muted hover:bg-secondary hover:text-foreground'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`q-${q.id}`}
+                          value={opt}
+                          checked={userAnswers[q.id] === opt}
+                          onChange={() => handleAnswerChange(q.id, opt)}
+                          className="text-primary bg-input border-border focus:ring-primary h-4 w-4"
+                        />
+                        {opt}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="pl-9">
+                    <textarea
+                      value={userAnswers[q.id] || ''}
+                      onChange={(e) => handleAnswerChange(q.id, e.target.value)}
+                      placeholder={q.type === 'code' ? 'Write code solution here...' : 'Explain the concept...'}
+                      rows={q.type === 'code' ? 6 : 4}
+                      className="w-full bg-input border border-border rounded-lg p-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={handleSubmitExam}
+            disabled={grading}
+            className="w-full py-3 bg-primary text-primary-foreground hover:opacity-90 disabled:bg-secondary disabled:text-muted rounded-xl font-bold text-sm transition mt-6 flex justify-center items-center gap-2"
+          >
+            {grading ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Evaluating responses and grading...</span>
+              </>
+            ) : (
+              <span>Submit Practice Exam</span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Grade / Evaluation Results Dashboard */}
+      {gradeResult && (
+        <div className="space-y-6">
+          <div className="bg-secondary/50 p-6 rounded-2xl border border-border flex items-center justify-between shadow-xl">
+            <div className="space-y-1">
+              <span className="text-[10px] text-muted font-semibold uppercase tracking-wider">Exam Results</span>
+              <h3 className="text-xl font-bold text-foreground">Performance Summary</h3>
+            </div>
+            <div className="flex flex-col items-center justify-center bg-input border border-border rounded-2xl h-20 w-24">
+              <span className="text-2xl font-black text-accent">{gradeResult.score}%</span>
+              <span className="text-[9px] text-muted uppercase tracking-widest font-bold mt-0.5">Score</span>
+            </div>
+          </div>
+
+          {/* Suggested Learning Pathways */}
+          <div className="bg-secondary/30 border border-border p-5 rounded-2xl space-y-3 shadow-lg">
+            <h4 className="text-sm font-semibold text-primary flex items-center gap-1.5">
+              <ArrowRight className="h-4 w-4" />
+              Suggested Learning Pathway
+            </h4>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              {gradeResult.suggestedPathways.map((pathway) => (
+                <li key={pathway} className="flex items-start gap-2 bg-input p-2.5 rounded-lg border border-border">
+                  <Check className="h-4 w-4 text-accent flex-shrink-0 mt-0.5" />
+                  <span className="text-foreground leading-relaxed">{pathway}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Gap Analysis */}
+          <div className="glass-panel p-6 rounded-2xl space-y-3 shadow-lg">
+            <h4 className="text-sm font-semibold text-accent flex items-center gap-1.5">
+              <AlertTriangle className="h-4 w-4 text-accent" />
+              Conceptual Gap Analysis
+            </h4>
+            <div className="text-xs text-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+              <ReactMarkdown>{gradeResult.gapAnalysis}</ReactMarkdown>
+            </div>
+          </div>
+
+          {/* Question Breakdown */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold text-muted uppercase tracking-wider pl-1">Detailed Breakdown</h4>
+            {gradeResult.questionGrades.map((q, idx) => (
+              <div key={idx} className="bg-secondary/40 border border-border rounded-2xl p-5 space-y-3 shadow-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-muted text-xs font-bold mt-0.5">{idx + 1}.</span>
+                    <p className="text-xs font-medium text-foreground leading-relaxed">{q.question}</p>
+                  </div>
+                  <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    q.score >= 7 ? 'bg-emerald-950/20 border border-emerald-900/35 text-emerald-500' : 'bg-red-950/20 border border-red-900/35 text-red-400'
+                  }`}>
+                    {q.score}/10
+                  </div>
+                </div>
+
+                <div className="bg-input border border-border rounded-lg p-3 text-xs">
+                  <span className="text-[10px] text-muted font-semibold block mb-0.5">Your Response:</span>
+                  <p className="font-mono text-foreground whitespace-pre-wrap leading-relaxed">{q.userAnswer || '[No response provided]'}</p>
+                </div>
+
+                <div className="text-xs text-muted leading-relaxed pl-1.5 border-l-2 border-border">
+                  <span className="text-[10px] text-muted font-semibold block mb-0.5">Feedback:</span>
+                  <p>{q.feedback}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => { setQuestions([]); setGradeResult(null); }}
+            className="w-full py-2.5 bg-input border border-border hover:bg-secondary text-foreground rounded-lg text-xs font-semibold transition shadow-md"
+          >
+            Review Another Module
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
