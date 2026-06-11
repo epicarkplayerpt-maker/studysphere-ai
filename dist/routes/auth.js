@@ -10,8 +10,8 @@ const prisma_1 = __importDefault(require("../lib/prisma"));
 const logger_1 = __importDefault(require("../lib/logger"));
 const validation_1 = require("../middleware/validation");
 const router = (0, express_1.Router)();
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const googleClient = GOOGLE_CLIENT_ID ? new google_auth_library_1.OAuth2Client(GOOGLE_CLIENT_ID) : null;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '779960370065-orcbqonmg0irnqivbcemhpbp73k0k93g.apps.googleusercontent.com';
+const googleClient = new google_auth_library_1.OAuth2Client(GOOGLE_CLIENT_ID);
 // Helper to set session cookie
 const setSessionCookie = (res, token, expiresAt) => {
     const req = res.req;
@@ -20,7 +20,7 @@ const setSessionCookie = (res, token, expiresAt) => {
         path: '/',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production' && !isLocal,
-        sameSite: isLocal ? 'lax' : 'strict',
+        sameSite: 'lax',
         expires: expiresAt,
     });
 };

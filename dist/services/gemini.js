@@ -96,7 +96,7 @@ Output every single line of code completely when requested.
             };
         }
         catch (error) {
-            logger_1.default.error('Gemini API Non-Stream Generation Failure: %s', error.message);
+            logger_1.default.error('Zenith AI Non-Stream Generation Failure: %s', error.message);
             throw error;
         }
     }
@@ -137,7 +137,7 @@ Output every single line of code completely when requested.
             return { text: fullText, usage };
         }
         catch (error) {
-            logger_1.default.error('Gemini API Stream Generation Failure: %s', error.message);
+            logger_1.default.error('Zenith AI Stream Generation Failure: %s', error.message);
             throw error;
         }
     }
@@ -175,7 +175,7 @@ ${query}
             return result.embedding.values;
         }
         catch (error) {
-            logger_1.default.error('Gemini Single Embedding Generation Failure: %s', error.message);
+            logger_1.default.error('Zenith AI Single Embedding Generation Failure: %s', error.message);
             throw error;
         }
     }
@@ -199,7 +199,7 @@ ${query}
             return response.embeddings.map(e => e.values);
         }
         catch (error) {
-            logger_1.default.error('Gemini Batch Embedding Generation Failure: %s', error.message);
+            logger_1.default.error('Zenith AI Batch Embedding Generation Failure: %s', error.message);
             throw error;
         }
     }

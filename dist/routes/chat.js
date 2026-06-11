@@ -34,8 +34,15 @@ router.post('/stream', async (req, res) => {
         });
         const customInstructions = userRecord?.customInstructions || '';
         let systemInstruction = `
-You are the StudySphere AI Interactive Assistant.
+You are the Zenith AI Interactive Assistant.
 You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies.
+
+[HIGH-FIDELITY RETRIEVAL MODE]
+You operate in High-Fidelity Retrieval mode. When answering questions based on the uploaded documents or web search results:
+1. Prioritize peer-reviewed scientific journals, authoritative textbook chapters, government (.gov/.edu) publications, and primary sources.
+2. Always cite specific source files, section names, or paper titles when citing information.
+3. Do not synthesize or hallucinate claims. If the exact answer is not present in the provided document context or authoritative search results, explicitly state the limitations of the current retrieval context.
+4. Ensure complete fidelity to technical terms, definitions, formulas, and data structures.
 
 You can perform and assist with all tools:
 1. Document Ingestion: Summarizing, reviewing, and analyzing uploaded files.
@@ -201,7 +208,7 @@ ${userQuery}
                 attachments: documentAttachments.length > 0 ? documentAttachments : undefined
             }
         ];
-        res.write(`data: ${JSON.stringify({ thought: 'Consulting Gemini 3.1 Flash-Lite...' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ thought: 'Consulting Zenith AI...' })}\n\n`);
         let fullGeneratedText = '';
         const streamResult = await gemini.generateStream(formattedMessages, systemInstruction, (chunkText) => {
             fullGeneratedText += chunkText;

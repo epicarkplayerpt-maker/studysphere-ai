@@ -6,8 +6,8 @@ import logger from '../lib/logger';
 import { validateRequest, googleAuthSchema } from '../middleware/validation';
 
 const router = Router();
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '779960370065-orcbqonmg0irnqivbcemhpbp73k0k93g.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Helper to set session cookie
 const setSessionCookie = (res: Response, token: string, expiresAt: Date) => {
@@ -18,7 +18,7 @@ const setSessionCookie = (res: Response, token: string, expiresAt: Date) => {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production' && !isLocal,
-    sameSite: isLocal ? 'lax' : 'strict',
+    sameSite: 'lax',
     expires: expiresAt,
   });
 };

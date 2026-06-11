@@ -17,7 +17,7 @@ const validation_1 = require("../middleware/validation");
 const router = (0, express_1.Router)();
 const gemini = new gemini_1.GeminiService();
 /**
- * Helper to record token usage for Gemini API interactions
+ * Helper to record token usage for Zenith AI API interactions
  */
 async function recordTokenUsage(userId, modelName, usage, action) {
     try {
@@ -42,7 +42,7 @@ async function recordTokenUsage(userId, modelName, usage, action) {
     }
 }
 // ==========================================
-// Gemini JSON Schemas
+// Zenith AI JSON Schemas
 // ==========================================
 const flashcardsSchema = {
     type: "array",
@@ -284,6 +284,36 @@ function validateAndSanitizeFile(file) {
     }
     return { safeName };
 }
+/**
+ * Helper to recursively summarize long document texts using Zenith AI
+ */
+async function generateRecursiveSummary(text, filename, userId) {
+    const maxSegmentLength = 15000;
+    if (text.length <= maxSegmentLength) {
+        const systemInstruction = `You are Zenith AI's high-fidelity summarizer. Synthesize the provided document text into a comprehensive, authoritative summary of about 300-500 words. Capture all key facts, terminology, structure, and formulas.`;
+        const prompt = `Generate a high-fidelity summary for the file "${filename}":\n\n${text}`;
+        const result = await gemini.generateResponse([{ role: 'user', content: prompt }], systemInstruction);
+        await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Document Summarization');
+        return result.text;
+    }
+    // Split and recursively summarize
+    const segments = [];
+    for (let i = 0; i < text.length; i += maxSegmentLength) {
+        segments.push(text.substring(i, i + maxSegmentLength));
+    }
+    logger_1.default.info('Splitting long text into %d segments for recursive summarization.', segments.length);
+    const summaries = [];
+    for (let idx = 0; idx < segments.length; idx++) {
+        const seg = segments[idx];
+        const systemInstruction = `You are Zenith AI's high-fidelity summarizer. Synthesize this section of the document into a concise summary retaining key facts.`;
+        const prompt = `Summarize section ${idx + 1} of the file "${filename}":\n\n${seg}`;
+        const result = await gemini.generateResponse([{ role: 'user', content: prompt }], systemInstruction);
+        await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Document Summarization');
+        summaries.push(result.text);
+    }
+    const combinedSummaries = summaries.join('\n\n');
+    return generateRecursiveSummary(combinedSummaries, filename, userId);
+}
 router.post('/binders/:binderId/documents', upload_1.upload.array('files', 10), async (req, res) => {
     try {
         const binderId = req.params.binderId;
@@ -314,7 +344,20 @@ router.post('/binders/:binderId/documents', upload_1.upload.array('files', 10), 
             file.originalname = validation.safeName;
         }
         for (const file of files) {
-            const parsedText = await (0, chunker_1.parseFileBuffer)(file.buffer, file.mimetype, file.originalname);
+            let parsedText = await (0, chunker_1.parseFileBuffer)(file.buffer, file.mimetype, file.originalname);
+            // Perform recursive summarization if text is long enough
+            let summaryText = '';
+            if (parsedText && parsedText.length > 15000) {
+                logger_1.default.info('Document is long (%d chars). Generating recursive high-fidelity summary...', parsedText.length);
+                try {
+                    summaryText = await generateRecursiveSummary(parsedText, file.originalname, userId);
+                    logger_1.default.info('Generated recursive summary for %s: %d characters.', file.originalname, summaryText.length);
+                    parsedText = `[Project Zenith Recursive Document Summary]:\n${summaryText}\n\n[Full Document Text]:\n${parsedText}`;
+                }
+                catch (sumErr) {
+                    logger_1.default.error('Failed to generate recursive summary: %s', sumErr.message);
+                }
+            }
             const doc = await prisma_1.default.document.create({
                 data: {
                     binderId,
@@ -447,6 +490,7 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
         let binderName = 'All Global Binders';
         // 1. Vector Database RAG Retrieval
         let dbChunks = [];
+        let hasSemanticResults = false;
         // Generate query embedding
         logger_1.default.info('Generating embedding for user search query...');
         const queryEmbedding = await gemini.getEmbedding(query);
@@ -460,25 +504,75 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
                 return;
             }
             binderName = binder.name;
-            // Query database for matching chunks in this binder
-            dbChunks = await prisma_1.default.$queryRawUnsafe(`SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
-         FROM "DocumentChunk" dc
-         JOIN "Document" d ON dc."documentId" = d.id
-         WHERE d."binderId" = $2
-         ORDER BY dc.embedding <=> $1::vector
-         LIMIT $3`, vectorStr, binderId, 12);
+            try {
+                // Query database for matching chunks in this binder
+                dbChunks = await prisma_1.default.$queryRawUnsafe(`SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
+           FROM "DocumentChunk" dc
+           JOIN "Document" d ON dc."documentId" = d.id
+           WHERE d."binderId" = $2
+           ORDER BY dc.embedding <=> $1::vector
+           LIMIT $3`, vectorStr, binderId, 12);
+                if (dbChunks && dbChunks.length > 0) {
+                    hasSemanticResults = true;
+                }
+            }
+            catch (ragErr) {
+                logger_1.default.error('PGVector binder query failed, falling back: %s', ragErr.message);
+            }
+            // Fallback direct DB load if pgvector fails or yields empty results
+            if (!hasSemanticResults) {
+                const binderDocs = await prisma_1.default.document.findMany({
+                    where: { binderId },
+                    select: { name: true, content: true }
+                });
+                if (binderDocs.length > 0) {
+                    let fallbackText = '';
+                    for (const doc of binderDocs) {
+                        if (doc.content) {
+                            const docSnippet = doc.content.substring(0, 150000); // Limit size per file to prevent prompt overflow
+                            fallbackText += `<chunk index="fallback" document="${doc.name}" similarity="fallback">\n${docSnippet}\n</chunk>\n\n`;
+                        }
+                    }
+                    contextText = fallbackText.trim();
+                }
+            }
         }
         else {
-            // Query database for matching chunks globally across all binders of this user
-            dbChunks = await prisma_1.default.$queryRawUnsafe(`SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
-         FROM "DocumentChunk" dc
-         JOIN "Document" d ON dc."documentId" = d.id
-         JOIN "Binder" b ON d."binderId" = b.id
-         WHERE b."userId" = $2
-         ORDER BY dc.embedding <=> $1::vector
-         LIMIT $3`, vectorStr, userId, 12);
+            try {
+                // Query database for matching chunks globally across all binders of this user
+                dbChunks = await prisma_1.default.$queryRawUnsafe(`SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
+           FROM "DocumentChunk" dc
+           JOIN "Document" d ON dc."documentId" = d.id
+           JOIN "Binder" b ON d."binderId" = b.id
+           WHERE b."userId" = $2
+           ORDER BY dc.embedding <=> $1::vector
+           LIMIT $3`, vectorStr, userId, 12);
+                if (dbChunks && dbChunks.length > 0) {
+                    hasSemanticResults = true;
+                }
+            }
+            catch (ragErr) {
+                logger_1.default.error('PGVector global query failed, falling back: %s', ragErr.message);
+            }
+            // Fallback direct DB load if pgvector fails or yields empty results
+            if (!hasSemanticResults) {
+                const userDocs = await prisma_1.default.document.findMany({
+                    where: { binder: { userId } },
+                    select: { name: true, content: true }
+                });
+                if (userDocs.length > 0) {
+                    let fallbackText = '';
+                    for (const doc of userDocs) {
+                        if (doc.content) {
+                            const docSnippet = doc.content.substring(0, 150000); // Limit size per file to prevent prompt overflow
+                            fallbackText += `<chunk index="fallback" document="${doc.name}" similarity="fallback">\n${docSnippet}\n</chunk>\n\n`;
+                        }
+                    }
+                    contextText = fallbackText.trim();
+                }
+            }
         }
-        if (dbChunks && dbChunks.length > 0) {
+        if (hasSemanticResults && dbChunks && dbChunks.length > 0) {
             contextText = dbChunks
                 .map((c, idx) => `<chunk index="${idx}" document="${c.documentName}" similarity="${Number(c.similarity).toFixed(3)}">\n${c.content}\n</chunk>`)
                 .join('\n\n');
@@ -770,7 +864,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nIncorporate the fo
             res.json({ questions: examQuestions });
         }
         catch (parseErr) {
-            logger_1.default.error('JSON parsing failure from Gemini Exam Generator output: %s\nRaw output: %s', parseErr, response.text);
+            logger_1.default.error('JSON parsing failure from Zenith AI Exam Generator output: %s\nRaw output: %s', parseErr, response.text);
             res.status(500).json({ error: 'Failed to format mock exam. Try generating again.' });
         }
     }
@@ -818,7 +912,7 @@ Output must be a valid JSON object. Do not include markdown formatting blocks li
             res.json(evaluation);
         }
         catch (parseErr) {
-            logger_1.default.error('JSON parsing failure from Gemini Exam Grader output: %s\nRaw output: %s', parseErr, response.text);
+            logger_1.default.error('JSON parsing failure from Zenith AI Exam Grader output: %s\nRaw output: %s', parseErr, response.text);
             res.status(500).json({ error: 'Failed to grade mock exam.' });
         }
     }
@@ -971,7 +1065,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
             res.json({ podcast: dialogue });
         }
         catch (parseErr) {
-            logger_1.default.error('JSON parsing failure from Gemini Podcast Generator output: %s\nRaw output: %s', parseErr, response.text);
+            logger_1.default.error('JSON parsing failure from Zenith AI Podcast Generator output: %s\nRaw output: %s', parseErr, response.text);
             res.status(500).json({ error: 'Failed to format podcast transcript. Try generating again.' });
         }
     }

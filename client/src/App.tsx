@@ -416,7 +416,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
             Project Zenith Workspace Intelligence
           </h2>
           <p className="text-[11px] text-muted">
-            Real-time PostgreSQL analytics, active sessions, Gemini token monitoring, and design prompt suites.
+            Real-time PostgreSQL analytics, active sessions, Zenith AI token monitoring, and design prompt suites.
           </p>
         </div>
         <div className="flex items-center gap-2 mt-2 md:mt-0">
@@ -578,7 +578,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
         <div className="lg:col-span-5 bg-secondary border border-border rounded-2xl p-4 flex flex-col animate-slide-up [animation-delay:0.25s]">
           <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5 mb-3">
             <Zap className="h-3.5 w-3.5 text-purple-500" />
-            Gemini 3.1 Flash Lite API Footprint
+            Zenith AI API Footprint
           </h3>
 
           <div className="space-y-4 overflow-y-auto max-h-[350px] flex-1 pr-1 scrollbar-thin">
@@ -2752,7 +2752,7 @@ export default function App() {
           
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary border border-border text-xs text-primary font-medium">
             <Zap className="h-3.5 w-3.5 text-accent animate-pulse" />
-            <span>Powered by Gemini 3.1 Flash-Lite Streaming</span>
+            <span>Powered by Zenith AI Streaming</span>
           </div>
 
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
@@ -3614,7 +3614,7 @@ export default function App() {
                           <div className="flex-1 min-w-0 space-y-1">
                             <div className={`flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                               <span className="text-[10px] font-bold text-foreground">
-                                {isUser ? 'You' : 'StudySphere AI'}
+                                {isUser ? 'You' : 'Zenith AI'}
                               </span>
                               
                               {/* Controls */}
