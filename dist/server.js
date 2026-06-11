@@ -178,6 +178,7 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // Start listening
-app.listen(PORT, () => {
-    logger_1.default.info('StudySphere AI server listening on http://localhost:%s', PORT);
+const listenPort = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+app.listen(listenPort, '0.0.0.0', () => {
+    logger_1.default.info('StudySphere AI server listening on http://0.0.0.0:%s', listenPort);
 });
