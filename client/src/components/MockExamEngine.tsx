@@ -30,13 +30,14 @@ interface GradeResponse {
 
 interface MockExamEngineProps {
   initialBinderId?: string;
+  initialQuestionCount?: number;
   onGradeCompleted?: (gapAnalysis: string, pathways: string[]) => void;
 }
 
-export const MockExamEngine: React.FC<MockExamEngineProps> = ({ initialBinderId, onGradeCompleted }) => {
+export const MockExamEngine: React.FC<MockExamEngineProps> = ({ initialBinderId, initialQuestionCount, onGradeCompleted }) => {
   const [binders, setBinders] = useState<Binder[]>([]);
   const [selectedBinderId, setSelectedBinderId] = useState<string>(initialBinderId || '');
-  const [questionCount, setQuestionCount] = useState<number>(5);
+  const [questionCount, setQuestionCount] = useState<number>(initialQuestionCount || 5);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState<boolean>(false);

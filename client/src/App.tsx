@@ -972,9 +972,9 @@ export default function App() {
           setSuggestedPathways(data.suggestedPathways || []);
           setActiveRightTab('gaps');
           setRightSidebarOpen(true);
-          showToast('Conceptual Gap Analysis compiled successfully!', 'success');
+          showToast('Study Weakness Finder scan compiled successfully!', 'success');
         } else {
-          showToast('Failed to analyze gaps in documents.', 'error');
+          showToast('Failed to find weaknesses in documents.', 'error');
         }
       } else {
         const errData = await safeParseJson(res);
@@ -2154,6 +2154,7 @@ export default function App() {
           <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
             <MockExamEngine 
               initialBinderId={activeBinderId} 
+              initialQuestionCount={questionCount}
               onGradeCompleted={(gaps, pathways) => {
                 setGapAnalysis(gaps);
                 setSuggestedPathways(pathways);
@@ -3470,13 +3471,11 @@ export default function App() {
           </div>
 
           {/* Spaced Repetition Card Navigation */}
+          {/* Smart Study Cards Navigation */}
           <div className="p-3 bg-input/10 border-t border-border flex-shrink-0">
             <div className="bg-secondary border border-border p-3 rounded-xl flex flex-col gap-2">
-              <div className="flex justify-between items-center">
-                <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                  <Layers className="h-3.5 w-3.5 text-accent" />
-                  Active Recall Queue
-                </span>
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="font-bold text-foreground">Smart Study Cards</span>
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${dueCardsCount > 0 ? 'bg-red-950/20 border border-red-900/35 text-red-400' : 'bg-input border border-border text-muted'}`}>
                   {dueCardsCount} due
                 </span>
@@ -3490,18 +3489,18 @@ export default function App() {
                 }}
                 className="w-full py-1.5 bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] text-[11px] font-bold rounded-lg transition shadow flex items-center justify-center gap-1"
               >
-                <span>Trigger SRS Review</span>
+                <span>Review Smart Study Cards</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Conceptual Gap Analysis Navigation */}
+          {/* Study Weakness Finder Navigation */}
           <div className="p-3 bg-input/10 border-t border-border flex-shrink-0">
             <div className="bg-secondary border border-border p-3 rounded-xl flex flex-col gap-2">
               <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
                 <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                Conceptual Gap Analysis
+                Study Weakness Finder
               </span>
               <button
                 onClick={handleRunGapAnalysis}
@@ -3513,7 +3512,7 @@ export default function App() {
                 ) : (
                   <Zap className="h-3.5 w-3.5 text-primary" />
                 )}
-                <span>Scan Binder for Gaps</span>
+                <span>Find Study Weaknesses</span>
               </button>
             </div>
           </div>
@@ -3543,7 +3542,7 @@ export default function App() {
             <div className="flex-1 flex flex-col h-full overflow-hidden p-4 md:p-6">
             <div 
               id="tour-step-chat"
-              className={`flex-1 flex flex-col min-h-0 max-w-3xl mx-auto w-full ${tourStep === 5 ? 'relative z-[9992] bg-background border border-primary/20 p-4 rounded-2xl shadow-2xl' : ''}`}
+              className={`flex-1 flex flex-col min-h-0 max-w-5xl xl:max-w-6xl mx-auto w-full ${tourStep === 5 ? 'relative z-[9992] bg-background border border-primary/20 p-4 rounded-2xl shadow-2xl' : ''}`}
             >
               
               {/* Chat Feed Messages Area */}
@@ -3671,16 +3670,30 @@ export default function App() {
                                 </div>
                               )}
 
-                              <div className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
-                                <SafeErrorBoundary>
-                                  <ReactMarkdown
-                                    components={renderMarkdownComponents}
-                                    remarkPlugins={[remarkMath]}
-                                    rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-                                  >
-                                    {msg.content}
-                                  </ReactMarkdown>
-                                </SafeErrorBoundary>
+                              <div className="space-y-4 w-full text-left">
+                                {parseMessageArtifacts(msg.content).map((part, pIdx) => {
+                                  if (part.type === 'artifact') {
+                                    return (
+                                      <SafeErrorBoundary key={pIdx}>
+                                        {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
+                                      </SafeErrorBoundary>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <div key={pIdx} className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
+                                      <SafeErrorBoundary>
+                                        <ReactMarkdown
+                                          components={renderMarkdownComponents}
+                                          remarkPlugins={[remarkMath]}
+                                          rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+                                        >
+                                          {part.content || ''}
+                                        </ReactMarkdown>
+                                      </SafeErrorBoundary>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
@@ -3784,11 +3797,11 @@ export default function App() {
           >
             {[
               { id: 'viewer', label: 'Reader', icon: FileText },
-              { id: 'guide', label: 'Guide', icon: BookMarked },
-              { id: 'podcast', label: 'Podcast', icon: SpeakerIcon },
-              { id: 'srs', label: 'Cards', icon: Layers },
-              { id: 'quiz', label: 'Exam', icon: Award },
-              { id: 'gaps', label: 'Gaps', icon: TrendingUp },
+              { id: 'guide', label: 'Syllabus', icon: BookMarked },
+              { id: 'podcast', label: 'Audio Review', icon: SpeakerIcon },
+              { id: 'srs', label: 'Study Cards', icon: Layers },
+              { id: 'quiz', label: 'Practice Exam', icon: Award },
+              { id: 'gaps', label: 'Weaknesses', icon: TrendingUp },
             ].map(tab => {
               const Icon = tab.icon;
               const isActive = activeRightTab === tab.id;
@@ -4096,10 +4109,10 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Section 2: Real-time Conceptual Gap Analysis */}
+                {/* Section 2: Real-time Study Weakness Finder */}
                 <div className="p-3 border-b border-border bg-input/10 flex items-center gap-1.5 flex-shrink-0">
                   <TrendingUp className="h-3.5 w-3.5 text-accent" />
-                  <span className="text-[9.5px] font-bold text-muted uppercase tracking-widest">Conceptual Gap Analysis</span>
+                  <span className="text-[9.5px] font-bold text-muted uppercase tracking-widest">Study Weakness Finder</span>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-input/5">
@@ -4108,7 +4121,7 @@ export default function App() {
                       <div className="bg-input border border-border rounded-xl p-3 space-y-2 shadow-inner">
                         <div className="flex items-center gap-1.5 text-accent">
                           <AlertTriangle className="h-3.5 w-3.5" />
-                          <h4 className="text-[9.5px] font-bold uppercase tracking-wider">Gaps Detected</h4>
+                          <h4 className="text-[9.5px] font-bold uppercase tracking-wider">Weaknesses Detected</h4>
                         </div>
                         <div className="text-[10.5px] text-muted leading-relaxed prose prose-invert prose-xs academic-prose">
                           <SafeErrorBoundary>
@@ -4136,9 +4149,9 @@ export default function App() {
                   ) : (
                     <div className="h-full flex flex-col justify-center items-center text-center p-3 gap-2 py-8">
                       <TrendingUp className="h-6 w-6 text-muted" />
-                      <span className="text-xs font-bold text-foreground">No gaps detected yet</span>
+                      <span className="text-xs font-bold text-foreground">No weaknesses detected yet</span>
                       <span className="text-[9.5px] text-muted leading-relaxed max-w-[180px]">
-                        Complete a Mock Exam to run conceptual gap analysis on binder files.
+                        Complete a Mock Exam to run a study weakness finder scan on binder files.
                       </span>
                       <button
                         onClick={() => setActiveRightTab('quiz')}
@@ -4248,7 +4261,7 @@ export default function App() {
                 <Layers className="h-3.5 w-3.5 text-primary" /> 3. Toggle Cognitive Tools
               </h4>
               <p className="text-xs text-muted leading-relaxed">
-                Switch tabs at the top to access the different cognitive study engines: interactive Chat, generated Study Guides, Briefing Podcasts, Flashcards, and Mock Exams.
+                Switch tabs at the top to access the different cognitive study engines: interactive Chat, Master Study Syllabi, Audio Reviews, Smart Study Cards, and Practice Exams.
               </p>
               <div className="flex justify-between items-center text-[10px] pt-1">
                 <button onClick={() => { setTourStep(3); playSoundEffect('click'); }} className="text-muted hover:text-foreground font-semibold">Back</button>
@@ -4445,10 +4458,10 @@ export default function App() {
       <div className="lg:hidden h-14 bg-secondary border-t border-border flex items-center justify-around px-2 z-40">
         {[
           { id: 'chat', label: 'Chat', icon: MessageSquare },
-          { id: 'guide', label: 'Guides', icon: BookMarked },
-          { id: 'podcast', label: 'Podcast', icon: SpeakerIcon },
-          { id: 'srs', label: 'Cards', icon: Layers },
-          { id: 'quiz', label: 'Exams', icon: Award },
+          { id: 'guide', label: 'Syllabus', icon: BookMarked },
+          { id: 'podcast', label: 'Audio Review', icon: SpeakerIcon },
+          { id: 'srs', label: 'Study Cards', icon: Layers },
+          { id: 'quiz', label: 'Practice Exam', icon: Award },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = tab.id === 'chat' 
@@ -4551,13 +4564,33 @@ export default function App() {
                     />
                   )}
 
-                  <div className="prose max-w-none chat-prose text-xs text-foreground">
+                  <div className="space-y-3 w-full">
                     {isUser ? (
                       <p className="whitespace-pre-wrap text-[11px]">{msg.content}</p>
                     ) : msg.content ? (
-                      <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                        {msg.content}
-                      </ReactMarkdown>
+                      parseMessageArtifacts(msg.content).map((part, pIdx) => {
+                        if (part.type === 'artifact') {
+                          return (
+                            <SafeErrorBoundary key={pIdx}>
+                              {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
+                            </SafeErrorBoundary>
+                          );
+                        }
+                        
+                        return (
+                          <div key={pIdx} className="prose max-w-none chat-prose text-xs text-foreground">
+                            <SafeErrorBoundary>
+                              <ReactMarkdown
+                                components={renderMarkdownComponents}
+                                remarkPlugins={[remarkMath]}
+                                rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+                              >
+                                {part.content || ''}
+                              </ReactMarkdown>
+                            </SafeErrorBoundary>
+                          </div>
+                        );
+                      })
                     ) : (
                       <div className="flex items-center gap-1.5 py-1">
                         <span className="thinking-dot"></span>

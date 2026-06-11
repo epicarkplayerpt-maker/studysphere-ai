@@ -39,10 +39,19 @@ You have FULL context of the user's active workspace screen, including their sel
 
 You can perform and assist with all tools:
 1. Document Ingestion: Summarizing, reviewing, and analyzing uploaded files.
-2. Smart Flashcards: Creating, reviewing, and testing memory using spaced repetition.
-3. AI Podcast: Generating alternating host scripts (Alex and Taylor) to review study binder materials.
+2. Smart Study Cards: Creating, reviewing, and testing memory using spaced repetition.
+3. Audio Study Review: Generating alternating host scripts (Alex and Taylor) to review study binder materials.
 4. Practice Exams: Creating mock tests with immediate feedback and review explanations.
-5. Deep Synthesis: Aggregating all binder documents into a structured master syllabus.
+5. Master Study Syllabus: Aggregating all binder documents into a structured master syllabus.
+
+Interactive Study Workspaces:
+You can embed fully interactive study tools directly inside your chat response to let the user study inline. Output the following exact XML tags in your response when the user asks to start/generate them:
+- Smart Study Cards: Output \`<study-artifact type="flashcards" binderId="BINDER_ID"></study-artifact>\`
+- Practice Exam / Quiz: Output \`<study-artifact type="quiz" binderId="BINDER_ID" questionCount="NUM"></study-artifact>\`
+- Study Weakness Finder: Output \`<study-artifact type="weaknesses" binderId="BINDER_ID"></study-artifact>\`
+- Audio Study Review: Output \`<study-artifact type="audio-review" binderId="BINDER_ID"></study-artifact>\`
+- Master Study Syllabus: Output \`<study-artifact type="syllabus" binderId="BINDER_ID"></study-artifact>\`
+Replace BINDER_ID with the active binder ID (or leave it empty/omit it if not available). You can include standard markdown text before or after these tags explaining what they are.
 
 Formatting Guidelines:
 - Markdown: Always format your output cleanly using markdown. Keep headings hierarchical (h2, h3).
@@ -93,8 +102,9 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
             });
             if (binder && binder.documents.length > 0) {
                 binderDocs = binder.documents;
-                res.write(`data: ${JSON.stringify({ thought: 'Running semantic pgvector search across documents...' })}\n\n`);
+                let hasSemanticResults = false;
                 try {
+                    res.write(`data: ${JSON.stringify({ thought: 'Running semantic pgvector search across documents...' })}\n\n`);
                     const queryEmbedding = await gemini.getEmbedding(userQuery);
                     const vectorStr = `[${queryEmbedding.join(',')}]`;
                     const relevantChunks = await prisma_1.default.$queryRawUnsafe(`SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
@@ -104,19 +114,36 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
              ORDER BY dc.embedding <=> $1::vector
              LIMIT $3`, vectorStr, binderId, 6);
                     if (relevantChunks && relevantChunks.length > 0) {
+                        hasSemanticResults = true;
                         res.write(`data: ${JSON.stringify({ thought: `Extracted ${relevantChunks.length} relevant sections from files.` })}\n\n`);
                         binderContextText = relevantChunks
                             .map(rc => `<document filename="${rc.documentName}">\n${rc.content}\n</document>`)
                             .join('\n\n');
-                        systemInstruction += `\n\nStudy the files listed inside the <document_context> block. Answer based on this context and cite filenames when possible.`;
                     }
                     else {
-                        res.write(`data: ${JSON.stringify({ thought: 'No matching sections found in binder documents.' })}\n\n`);
+                        res.write(`data: ${JSON.stringify({ thought: 'No highly matching sections found in binder documents. Initializing text fallback...' })}\n\n`);
                     }
                 }
                 catch (ragErr) {
                     logger_1.default.error('RAG semantic search error: %s', ragErr);
-                    res.write(`data: ${JSON.stringify({ thought: 'Semantic search failed. Proceeding without file context.' })}\n\n`);
+                    res.write(`data: ${JSON.stringify({ thought: 'Semantic search failed. Initializing text fallback...' })}\n\n`);
+                }
+                // Robust Fallback: load text content directly if pgvector has zero chunks or fails
+                if (!hasSemanticResults && binderDocs.length > 0) {
+                    res.write(`data: ${JSON.stringify({ thought: `Aggregating content from all ${binderDocs.length} document(s) directly...` })}\n\n`);
+                    let fallbackText = '';
+                    for (const doc of binderDocs) {
+                        if (doc.content) {
+                            const docSnippet = doc.content.substring(0, 150000); // Limit size per file to prevent prompt overflow
+                            fallbackText += `<document filename="${doc.name}">\n${docSnippet}\n</document>\n\n`;
+                        }
+                    }
+                    if (fallbackText) {
+                        binderContextText = fallbackText.trim();
+                    }
+                }
+                if (binderContextText) {
+                    systemInstruction += `\n\nStudy the files listed inside the <document_context> block. Answer based on this context and cite filenames when possible.`;
                 }
             }
             else {
