@@ -67,8 +67,10 @@ export const gradeFlashcardSchema = z.object({
 });
 
 export const generateQuizSchema = z.object({
-  body: z.object({
+  params: z.object({
     binderId: z.string().uuid('Invalid binder ID format'),
+  }),
+  body: z.object({
     questionCount: z.number().int().min(1).max(20).optional().default(5),
   }),
 });

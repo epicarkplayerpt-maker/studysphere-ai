@@ -697,8 +697,8 @@ interface ArtifactPart {
 const parseMessageArtifacts = (content: string): ArtifactPart[] => {
   if (!content) return [{ type: 'text', content: '' }];
   
-  // Matches <study-artifact ...> or <study-artifact ...></study-artifact>
-  const regex = /<study-artifact\s+([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/study-artifact>)/gi;
+  // Matches <study-artifact ...>, <study-artifact .../>, or <study-artifact ...>...</study-artifact>
+  const regex = /<study-artifact\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/study-artifact>|>)/gi;
   
   const parts: ArtifactPart[] = [];
   let lastIndex = 0;
@@ -712,10 +712,10 @@ const parseMessageArtifacts = (content: string): ArtifactPart[] => {
     
     const attrString = match[1];
     
-    // Parse attributes from attrString supporting single or double quotes
-    const typeMatch = attrString.match(/type\s*=\s*["']([^"']+)["']/i);
-    const binderIdMatch = attrString.match(/binderId\s*=\s*["']([^"']+)["']/i);
-    const questionCountMatch = attrString.match(/questionCount\s*=\s*["']([^"']+)["']/i);
+    // Parse attributes from attrString supporting single, double, or no quotes
+    const typeMatch = attrString.match(/type\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const binderIdMatch = attrString.match(/binderId\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const questionCountMatch = attrString.match(/questionCount\s*=\s*["']?([^"'\s>]+)["']?/i);
     
     const artifactType = typeMatch ? typeMatch[1] : '';
     const binderId = binderIdMatch ? binderIdMatch[1] : undefined;
@@ -800,7 +800,7 @@ const DismissableArtifactContainer: React.FC<DismissableArtifactContainerProps> 
     <div className="relative group">
       <button 
         onClick={() => setIsOpen(false)}
-        className="absolute top-4 right-4 p-1.5 rounded-xl bg-secondary/80 border border-border hover:bg-input text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition duration-200 z-10"
+        className="absolute top-4 right-4 p-1.5 rounded-xl bg-secondary/80 border border-border hover:bg-input text-muted hover:text-foreground opacity-80 hover:opacity-100 transition duration-200 z-10"
         title="Dismiss Artifact"
       >
         <X className="h-3.5 w-3.5" />
@@ -1887,6 +1887,8 @@ export default function App() {
           contextExplanation: contextExplanation,
           binderId: selectedBinderId || undefined,
           webSearch: webSearchActive,
+          userLocalTime: new Date().toString(),
+          userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
 
@@ -2611,6 +2613,8 @@ export default function App() {
           contextExplanation: contextExplanation,
           binderId: selectedBinderId || undefined,
           webSearch: webSearchActive,
+          userLocalTime: new Date().toString(),
+          userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
 
@@ -3416,21 +3420,23 @@ export default function App() {
           </button>
 
           {/* Admin Dashboard Switcher */}
-          <button
-            onClick={() => {
-              setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
-              playSoundEffect('click');
-            }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200 ${
-              activeTab === 'admin'
-                ? 'bg-primary/15 border-primary text-primary shadow-glow'
-                : 'bg-input hover:bg-secondary border-border/45 text-muted hover:text-foreground'
-            }`}
-            title="Toggle Dashboard Metrics & Prompts"
-          >
-            <TrendingUp className="h-4 w-4" />
-            <span>Admin View</span>
-          </button>
+          {user?.email === 'epicarkplayerpt@gmail.com' && (
+            <button
+              onClick={() => {
+                setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
+                playSoundEffect('click');
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200 ${
+                activeTab === 'admin'
+                  ? 'bg-primary/15 border-primary text-primary shadow-glow'
+                  : 'bg-input hover:bg-secondary border-border/45 text-muted hover:text-foreground'
+              }`}
+              title="Toggle Dashboard Metrics & Prompts"
+            >
+              <TrendingUp className="h-4 w-4" />
+              <span>Admin View</span>
+            </button>
+          )}
 
           {/* Right Sidebar toggle */}
           <button
@@ -3746,7 +3752,7 @@ export default function App() {
         {/* COLUMN 2: CENTRAL WORKSPACE (Active Tab view)           */}
         {/* ======================================================== */}
         <main className="flex-1 flex flex-col overflow-hidden bg-background">
-          {activeTab === 'admin' ? (
+          {activeTab === 'admin' && user?.email === 'epicarkplayerpt@gmail.com' ? (
             <div className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full h-full min-h-0 overflow-y-auto relative">
               <AdminMetricsView 
                 metrics={adminMetrics}
@@ -4051,7 +4057,7 @@ export default function App() {
           <div className="flex-1 overflow-y-auto flex flex-col">
             {/* 1. Document Reader */}
             {activeRightTab === 'viewer' && (
-              <div className="flex-1 flex flex-col min-h-0 bg-input/5">
+              <div className="flex-1 flex flex-col min-h-0 bg-input/5 animate-fade-in">
                 <div className="p-3 border-b border-border bg-input/10 flex items-center justify-between flex-shrink-0">
                   <span className="text-[11px] font-bold text-foreground truncate max-w-[280px]">
                     {selectedDocumentName || 'Source Document'}
@@ -4092,7 +4098,7 @@ export default function App() {
 
             {/* 2. Study Guide */}
             {activeRightTab === 'guide' && (
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 animate-fade-in">
                 <div className="flex justify-between items-center border-b border-border pb-2">
                   <span className="text-[11px] font-bold text-foreground">Binder Study Guide</span>
                   {selectedBinderId && documents.length > 0 && (
@@ -4158,7 +4164,7 @@ export default function App() {
 
             {/* 3. AI Podcast */}
             {activeRightTab === 'podcast' && (
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 animate-fade-in">
                 <div className="flex justify-between items-center border-b border-border pb-2">
                   <span className="text-[11px] font-bold text-foreground">AI Audio overview</span>
                   {selectedBinderId && documents.length > 0 && (
@@ -4272,7 +4278,7 @@ export default function App() {
 
             {/* 4. Smart Flashcards (SRS) */}
             {activeRightTab === 'srs' && (
-              <div className="p-4 flex-1 flex flex-col min-h-0">
+              <div className="p-4 flex-1 flex flex-col min-h-0 animate-fade-in">
                 <div className="border-b border-border pb-2 mb-2 flex items-center justify-between">
                   <span className="text-[11px] font-bold text-foreground">Flashcards Deck</span>
                   <span className="text-[9px] font-semibold bg-input border border-border px-2 py-0.5 rounded text-muted">
@@ -4280,14 +4286,14 @@ export default function App() {
                   </span>
                 </div>
                 <div className="flex-1 overflow-y-auto min-h-0">
-                  <FlashcardSRS soundOn={soundOn} />
+                  <FlashcardSRS soundOn={soundOn} binderId={selectedBinderId} />
                 </div>
               </div>
             )}
 
             {/* 5. Practice Exams */}
             {activeRightTab === 'quiz' && (
-              <div className="p-4 flex-1 flex flex-col min-h-0">
+              <div className="p-4 flex-1 flex flex-col min-h-0 animate-fade-in">
                 <div className="border-b border-border pb-2 mb-2">
                   <span className="text-[11px] font-bold text-foreground">Practice Mock Exam</span>
                 </div>
@@ -4299,7 +4305,7 @@ export default function App() {
 
             {/* 6. Stats & Gaps */}
             {activeRightTab === 'gaps' && (
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
                 {/* Section 1: History Log */}
                 <div className="p-3 border-b border-border bg-input/10 flex items-center gap-1.5 flex-shrink-0">
                   <History className="h-3.5 w-3.5 text-primary" />

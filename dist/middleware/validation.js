@@ -67,8 +67,10 @@ exports.gradeFlashcardSchema = zod_1.z.object({
     }),
 });
 exports.generateQuizSchema = zod_1.z.object({
-    body: zod_1.z.object({
+    params: zod_1.z.object({
         binderId: zod_1.z.string().uuid('Invalid binder ID format'),
+    }),
+    body: zod_1.z.object({
         questionCount: zod_1.z.number().int().min(1).max(20).optional().default(5),
     }),
 });

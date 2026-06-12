@@ -20,45 +20,99 @@ async function parseFileBuffer(buffer, mimeType, filename) {
             return buffer.toString('utf8');
         }
         else if (mimeType === 'application/pdf' || lowerFilename.endsWith('.pdf')) {
-            try {
-                let pdfParser = pdf_parse_1.default;
-                // Unwrap default export if present
-                if (pdfParser && pdfParser.default) {
-                    pdfParser = pdfParser.default;
-                }
-                // 1. Try class-based parser (Mehmet Kozan's version)
-                if (pdfParser && typeof pdfParser.PDFParse === 'function') {
+            let parsedText = '';
+            let pdfParser = pdf_parse_1.default;
+            // Unwrap default export if present
+            if (pdfParser && pdfParser.default) {
+                pdfParser = pdfParser.default;
+            }
+            // Method 1: Try class-based constructor on imported module (Kozan style: new pdfParser.PDFParse({ data: buffer }))
+            if (!parsedText && pdfParser && typeof pdfParser.PDFParse === 'function') {
+                try {
                     const parser = new pdfParser.PDFParse({ data: buffer });
                     const result = await parser.getText();
-                    const text = result?.text || '';
+                    parsedText = result?.text || '';
                     await parser.destroy();
-                    return text;
                 }
-                // 2. Try standard function-based parser
-                if (typeof pdfParser === 'function') {
-                    const data = await pdfParser(buffer);
-                    return data.text || '';
+                catch (e) {
+                    logger_1.default.debug('PDF Method 1 failed: %s', e.message || e);
                 }
-                // 3. Last resort require fallback
-                const rawPdfParse = require('pdf-parse');
-                // 3a. Try class-based parser on required module
-                if (rawPdfParse && typeof rawPdfParse.PDFParse === 'function') {
-                    const parser = new rawPdfParse.PDFParse({ data: buffer });
-                    const result = await parser.getText();
-                    const text = result?.text || '';
-                    await parser.destroy();
-                    return text;
-                }
-                // 3b. Try function-based parser on required module
-                if (typeof rawPdfParse === 'function') {
-                    const data = await rawPdfParse(buffer);
-                    return data.text || '';
-                }
-                throw new Error('No functional PDF parser found');
             }
-            catch (pdfErr) {
-                logger_1.default.warn('PDF parsing failed for %s, falling back to raw text recovery: %s', filename, pdfErr);
-                throw pdfErr; // will be handled by outer catch
+            // Method 2: Try instantiating imported module directly as class constructor (Kozan style: new pdfParser({ data: buffer }))
+            if (!parsedText && typeof pdfParser === 'function') {
+                try {
+                    const parser = new pdfParser({ data: buffer });
+                    const result = await parser.getText();
+                    parsedText = result?.text || '';
+                    await parser.destroy();
+                }
+                catch (e) {
+                    logger_1.default.debug('PDF Method 2 failed: %s', e.message || e);
+                }
+            }
+            // Method 3: Try standard function-based execution on imported module (Standard style: pdfParser(buffer))
+            if (!parsedText && typeof pdfParser === 'function') {
+                try {
+                    const data = await pdfParser(buffer);
+                    parsedText = data.text || '';
+                }
+                catch (e) {
+                    logger_1.default.debug('PDF Method 3 failed: %s', e.message || e);
+                }
+            }
+            // Method 4: Fallback to dynamic require('pdf-parse') and check constructor/functions
+            if (!parsedText) {
+                try {
+                    const rawPdfParse = require('pdf-parse');
+                    let resolvedParser = rawPdfParse;
+                    if (resolvedParser && resolvedParser.default) {
+                        resolvedParser = resolvedParser.default;
+                    }
+                    // Method 4a: Check PDFParse property constructor on required module
+                    if (resolvedParser && typeof resolvedParser.PDFParse === 'function') {
+                        try {
+                            const parser = new resolvedParser.PDFParse({ data: buffer });
+                            const result = await parser.getText();
+                            parsedText = result?.text || '';
+                            await parser.destroy();
+                        }
+                        catch (e) {
+                            logger_1.default.debug('PDF Method 4a failed: %s', e.message || e);
+                        }
+                    }
+                    // Method 4b: Check if required module itself is the constructor
+                    if (!parsedText && typeof resolvedParser === 'function') {
+                        try {
+                            const parser = new resolvedParser({ data: buffer });
+                            const result = await parser.getText();
+                            parsedText = result?.text || '';
+                            await parser.destroy();
+                        }
+                        catch (e) {
+                            logger_1.default.debug('PDF Method 4b failed: %s', e.message || e);
+                        }
+                    }
+                    // Method 4c: Standard function-based execution on required module
+                    if (!parsedText && typeof resolvedParser === 'function') {
+                        try {
+                            const data = await resolvedParser(buffer);
+                            parsedText = data.text || '';
+                        }
+                        catch (e) {
+                            logger_1.default.debug('PDF Method 4c failed: %s', e.message || e);
+                        }
+                    }
+                }
+                catch (e) {
+                    logger_1.default.debug('PDF dynamic require fallback failed: %s', e.message || e);
+                }
+            }
+            if (parsedText) {
+                return parsedText;
+            }
+            else {
+                logger_1.default.warn('All PDF parsing methods failed for %s, raising exception to invoke raw recovery.', filename);
+                throw new Error('No functional PDF parser succeeded');
             }
         }
         else if (mimeType.includes('wordprocessingml.document') || lowerFilename.endsWith('.docx') || lowerFilename.endsWith('.doc')) {

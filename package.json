@@ -4,9 +4,9 @@
   "description": "StudySphere AI - Next-Gen Study Workspace",
   "main": "dist/server.js",
   "scripts": {
-    "build:backend": "tsc && node scripts/copy-prisma-client.js",
+    "build:backend": "tsc && node dist/scripts/copy-prisma-client.js",
     "build:frontend": "cd client && npm ci --include=dev && npm run build",
-    "build": "npx prisma generate && tsc && node scripts/copy-prisma-client.js && cd client && npm ci --include=dev && npm run build",
+    "build": "npx prisma generate && tsc && node dist/scripts/copy-prisma-client.js && cd client && npm ci --include=dev && npm run build",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts"
   },

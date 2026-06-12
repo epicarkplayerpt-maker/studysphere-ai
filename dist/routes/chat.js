@@ -15,7 +15,7 @@ const gemini = new gemini_1.GeminiService();
 // Enforce auth
 router.use(auth_1.checkAuthRequired);
 router.post('/stream', async (req, res) => {
-    const { messages, binderId, webSearch, contextExplanation } = req.body;
+    const { messages, binderId, webSearch, contextExplanation, userLocalTime, userTimeZone } = req.body;
     const userId = req.user.userId;
     if (!messages || !Array.isArray(messages)) {
         res.status(400).json({ error: 'Invalid message logs.' });
@@ -33,7 +33,15 @@ router.post('/stream', async (req, res) => {
             select: { customInstructions: true }
         });
         const customInstructions = userRecord?.customInstructions || '';
+        const localTimeStr = userLocalTime || new Date().toString();
+        const localTimeObj = userLocalTime ? new Date(userLocalTime) : new Date();
+        const localYear = isNaN(localTimeObj.getFullYear()) ? new Date().getFullYear() : localTimeObj.getFullYear();
+        const localTZ = userTimeZone || 'UTC';
         let systemInstruction = `
+[CURRENT SYSTEM TIME]
+The user's current local date and time is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
+Always answer questions, analyze schedules, generate exams, and formulate queries under the assumption that the current year is ${localYear}.
+
 You are the Zenith AI Interactive Assistant.
 You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies.
 
@@ -83,9 +91,13 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
             try {
                 const optimizationPrompt = `
 You are a web search query optimizer for a study assistant.
+The current local date is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
 The user is asking a question in a study chat.
-Extract the core factual/informational question or topics that need a web search, and rewrite it as 1 or 2 concise search engine queries (like you would type into Google or DuckDuckGo).
-Do not search for local binder files, local context, or file-specific references. Only extract what needs to be looked up on the public internet.
+Extract the core conceptual topics or factual information needed to answer the user's message.
+Formulate 1 or 2 concise, highly targeted search engine queries to retrieve the latest, most relevant information on these topics.
+Avoid searching for user-specific pronouns or raw chat phrasing (like "tell me about", "what is", "do you know").
+Instead, generate queries focusing on key terminology, concepts, and temporal markers (such as the current year ${localYear} if looking for recent news).
+Do not search for local binder files, local context, or file-specific references.
 
 User Message: "${userQuery}"
 

@@ -14,9 +14,7 @@ router.use(auth_1.checkAuthRequired);
  * Middleware to restrict access to Admins only
  */
 function checkAdminAccess(req, res, next) {
-    const adminEmailsStr = process.env.ADMIN_EMAILS || '';
-    const adminEmails = adminEmailsStr.split(',').map(email => email.trim().toLowerCase());
-    if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
+    if (!req.user || req.user.email.toLowerCase() !== 'epicarkplayerpt@gmail.com') {
         logger_1.default.warn('Forbidden admin metrics access attempt by user: %s', req.user?.email || 'anonymous');
         res.status(403).json({ error: 'Access denied. Administrator privileges required.' });
         return;

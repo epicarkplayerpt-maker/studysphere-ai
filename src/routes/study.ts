@@ -355,6 +355,73 @@ async function generateRecursiveSummary(text: string, filename: string, userId: 
   return generateRecursiveSummary(combinedSummaries, filename, userId);
 }
 
+async function generateFlashcardsForBinderBackground(binderId: string, userId: string): Promise<void> {
+  try {
+    const binder = await prisma.binder.findFirst({
+      where: { id: binderId, userId },
+      include: { documents: true }
+    });
+
+    if (!binder || binder.documents.length === 0) {
+      return;
+    }
+
+    const documentsText = binder.documents
+      .map(doc => `[Doc: ${doc.name}]\n${doc.content.slice(0, 15000)}`)
+      .join('\n\n');
+
+    const systemPrompt = `
+You are a StudySphere Flashcard Generator.
+Analyze the provided study documents and generate 6-10 high-quality flashcards following the spaced repetition format.
+Each flashcard must have a "front" (a clear, direct question, concept prompt, or fill-in-the-blank) and a "back" (a brief, accurate answer or explanation, maximum 2 sentences).
+
+Your output MUST be a valid JSON array of flashcard objects:
+[
+  {
+    "front": "Question details here...",
+    "back": "Answer details here..."
+  }
+]
+
+Strictly return ONLY the raw JSON array. Do not wrap it in markdown code blocks.
+    `.trim();
+
+    const response = await gemini.generateResponse(
+      [{ role: 'user', content: `Analyze the documents and generate a comprehensive set of flashcards:\n\n${documentsText}` }],
+      systemPrompt,
+      true,
+      flashcardsSchema
+    );
+
+    await recordTokenUsage(userId, 'gemini-3.1-flash-lite', response.usage, 'Flashcard Generation (Auto)');
+
+    let cleanJsonText = response.text.trim();
+    if (cleanJsonText.startsWith('```')) {
+      cleanJsonText = cleanJsonText.replace(/^```(json)?/, '').replace(/```$/, '').trim();
+    }
+
+    const cards = JSON.parse(cleanJsonText);
+    for (const card of cards) {
+      if (card.front && card.back) {
+        await prisma.flashcard.create({
+          data: {
+            userId,
+            front: card.front,
+            back: card.back,
+            interval: 0,
+            easeFactor: 2.5,
+            reps: 0,
+            nextReview: new Date(),
+          }
+        });
+      }
+    }
+    logger.info('Automatically generated and saved %d flashcards for user %s on upload.', cards.length, userId);
+  } catch (error: any) {
+    logger.error('Failed to auto-generate flashcards for binder %s: %s', binderId, error.stack || error.message);
+  }
+}
+
 router.post('/binders/:binderId/documents', upload.array('files', 10), async (req: Request, res: Response): Promise<void> => {
   try {
     const binderId = req.params.binderId as string;
@@ -447,6 +514,13 @@ router.post('/binders/:binderId/documents', upload.array('files', 10), async (re
       }
 
       createdDocs.push({ id: doc.id, name: doc.name, size: parsedText.length });
+    }
+
+    // Auto-generate flashcards in the background asynchronously
+    if (createdDocs.length > 0) {
+      generateFlashcardsForBinderBackground(binderId, userId).catch(err => {
+        logger.error('Background flashcard generation error for binder %s: %s', binderId, err.message);
+      });
     }
 
     res.status(201).json({
