@@ -82,6 +82,35 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
     `.trim();
         const lastMessage = messages[messages.length - 1];
         const userQuery = lastMessage?.content || '';
+        // Scan for explicit URLs in user query
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const matchedUrls = userQuery.match(urlRegex) || [];
+        let directScrapedContextText = '';
+        if (matchedUrls.length > 0) {
+            const uniqueUrls = [...new Set(matchedUrls)].slice(0, 3);
+            res.write(`data: ${JSON.stringify({ thought: `Extracting page contents from: ${uniqueUrls.join(', ')}...` })}\n\n`);
+            const directScraped = await Promise.all(uniqueUrls.map(async (url, idx) => {
+                try {
+                    const content = await (0, search_1.fetchPageContent)(url);
+                    return {
+                        index: idx + 1,
+                        url,
+                        content: content || 'Failed to retrieve page text.'
+                    };
+                }
+                catch (err) {
+                    logger_1.default.warn('Failed to scrape URL %s: %s', url, err);
+                    return {
+                        index: idx + 1,
+                        url,
+                        content: 'Failed to retrieve page text.'
+                    };
+                }
+            }));
+            directScrapedContextText = directScraped
+                .map(p => `[Scraped Link #${p.index}]\nURL: ${p.url}\nContent:\n${p.content}`)
+                .join('\n\n');
+        }
         // 1. Web Search Phase (if enabled)
         let webSearchContextText = '';
         let scrapedPageContextText = '';
@@ -258,6 +287,10 @@ Output only the raw search query terms, one per line. Do not include markdown co
         }
         if (scrapedPageContextText) {
             combinedContext += `<scraped_page_contents>\n${scrapedPageContextText}\n</scraped_page_contents>\n\n`;
+        }
+        if (directScrapedContextText) {
+            combinedContext += `<direct_scraped_contents>\n${directScrapedContextText}\n</direct_scraped_contents>\n\n`;
+            systemInstruction += `\n\nStudy the files listed inside the <direct_scraped_contents> block. The user explicitly pasted these links. Answer based on this context and cite URLs when possible.`;
         }
         if (binderContextText) {
             combinedContext += `<document_context>\n${binderContextText}\n</document_context>\n\n`;

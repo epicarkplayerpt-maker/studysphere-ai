@@ -552,6 +552,35 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
         // 1. Vector Database RAG Retrieval
         let dbChunks = [];
         let hasSemanticResults = false;
+        // Scan for explicit URLs in user query
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const matchedUrls = query.match(urlRegex) || [];
+        let directScrapedContextText = '';
+        if (matchedUrls.length > 0) {
+            logger_1.default.info('Detected URLs in query: %s. Performing direct page scrapes...', matchedUrls.join(', '));
+            const uniqueUrls = [...new Set(matchedUrls)].slice(0, 3);
+            const directScraped = await Promise.all(uniqueUrls.map(async (url, idx) => {
+                try {
+                    const content = await (0, search_1.fetchPageContent)(url);
+                    return {
+                        index: idx + 1,
+                        url,
+                        content: content || 'Failed to retrieve page text.'
+                    };
+                }
+                catch (err) {
+                    logger_1.default.warn('Failed to scrape URL %s in study query: %s', url, err);
+                    return {
+                        index: idx + 1,
+                        url,
+                        content: 'Failed to retrieve page text.'
+                    };
+                }
+            }));
+            directScrapedContextText = directScraped
+                .map(p => `[Scraped Link #${p.index}]\nURL: ${p.url}\nContent:\n${p.content}`)
+                .join('\n\n');
+        }
         // Generate query embedding
         logger_1.default.info('Generating embedding for user search query...');
         const queryEmbedding = await gemini.getEmbedding(query);
@@ -655,8 +684,8 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
                 logger_1.default.error('Deep Research web search failed: %s', webErr);
             }
         }
-        if (!contextText.trim() && !webSearchText.trim()) {
-            res.status(400).json({ error: 'No relevant study materials found. Please upload documents to your binder first.' });
+        if (!contextText.trim() && !webSearchText.trim() && !directScrapedContextText.trim()) {
+            res.status(400).json({ error: 'No relevant study materials found. Please upload documents to your binder or provide a web URL first.' });
             return;
         }
         // Combine database context and web search context
@@ -667,6 +696,9 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
         if (webSearchText.trim()) {
             combinedContext += `<web_search_context>\n${webSearchText}\n</web_search_context>\n\n`;
         }
+        if (directScrapedContextText.trim()) {
+            combinedContext += `<direct_scraped_contents>\n${directScrapedContextText}\n</direct_scraped_contents>\n\n`;
+        }
         // Fetch custom instructions
         const userRecord = await prisma_1.default.user.findUnique({
             where: { id: userId },
@@ -676,8 +708,17 @@ router.post('/query', (0, validation_1.validateRequest)(validation_1.querySchema
         // Format request following strict XML encapsulation mandates
         const wrappedPrompt = gemini.wrapInXmlTags({ binderId: binderId || 'global', binderName, userId, deepResearch: !!(deepResearch || isAntigravityQuery) }, combinedContext, query);
         const systemInstruction = `
-You are a StudySphere Semantic Synthesis Assistant. 
-Analyze the user query based on the encapsulated files and web results inside the XML tags.
+You are the Zenith AI Interactive Assistant (never refer to yourself as Google Gemini or a Gemini model. You are Zenith AI, created by the Zenith team).
+Analyze the user query based on the encapsulated files, web results, and scraped contents inside the XML tags.
+
+[HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
+You operate in High-Fidelity Retrieval mode. When answering questions:
+1. Prioritize peer-reviewed scientific journals, authoritative textbook chapters, government (.gov/.edu) publications, and primary sources.
+2. Always cite specific source files, section names, or paper titles when citing information.
+3. STRICT HALLUCINATION RULE: You must NEVER hallucinate, invent facts, or present unverified information. If the exact answer is not present in the provided document context or authoritative search results, or if you do not know something, explicitly state: "I do not have access to that information in the provided context." Do not fabricate answers.
+4. Ensure complete fidelity to technical terms, definitions, formulas, and data structures.
+
+Other Guidelines:
 1. Identify concept overlaps and synthesise connections between multiple database chunks and web search results.
 2. Resolve potential contradictions or terminology differences.
 3. Cite specific file names or web result titles and URLs when referencing information.

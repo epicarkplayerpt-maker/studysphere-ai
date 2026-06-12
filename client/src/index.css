@@ -841,3 +841,44 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Light mode text contrast overrides for prose markdown */
+.theme-claude-light .prose-invert,
+.theme-claude-light .prose {
+  --tw-prose-body: var(--foreground) !important;
+  --tw-prose-headings: var(--foreground) !important;
+  --tw-prose-lead: var(--muted) !important;
+  --tw-prose-links: var(--accent) !important;
+  --tw-prose-bold: var(--foreground) !important;
+  --tw-prose-counters: var(--muted) !important;
+  --tw-prose-bullets: var(--muted-foreground) !important;
+  --tw-prose-hr: var(--border) !important;
+  --tw-prose-quotes: var(--foreground) !important;
+  --tw-prose-quote-borders: var(--border) !important;
+  --tw-prose-captions: var(--muted) !important;
+  --tw-prose-code: var(--foreground) !important;
+  --tw-prose-pre-code: var(--foreground) !important;
+  --tw-prose-pre-bg: var(--input) !important;
+  --tw-prose-th-borders: var(--border) !important;
+  --tw-prose-td-borders: var(--border) !important;
+  color: var(--foreground) !important;
+}
+
+/* Apple-style layout fluidity grid */
+.apple-grid {
+  background-size: 60px 60px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+}
+.theme-claude-light .apple-grid {
+  background-image: 
+    linear-gradient(to right, rgba(15, 23, 42, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.015) 1px, transparent 1px);
+}
+
+/* Modern active styles for list items */
+.shadow-glow-sm {
+  box-shadow: 0 0 10px 1px rgba(99, 102, 241, 0.08);
+}
+

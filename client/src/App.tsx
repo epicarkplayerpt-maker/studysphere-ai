@@ -834,6 +834,31 @@ const SyllabusArtifactWrapper: React.FC<SyllabusArtifactWrapperProps> = ({
 
   return <>{renderContent()}</>;
 };
+const getFileIconColor = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'pdf':
+      return 'text-red-400';
+    case 'doc':
+    case 'docx':
+      return 'text-blue-400';
+    case 'txt':
+    case 'md':
+      return 'text-emerald-400';
+    case 'csv':
+    case 'xlsx':
+    case 'xls':
+      return 'text-green-400';
+    case 'js':
+    case 'jsx':
+    case 'ts':
+    case 'tsx':
+    case 'json':
+      return 'text-purple-400';
+    default:
+      return 'text-primary';
+  }
+};
 
 
 export default function App() {
@@ -846,6 +871,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [viewingWorkspace, setViewingWorkspace] = useState<boolean>(false);
 
   // User Memory / Personalization State
   const [customInstructions, setCustomInstructions] = useState<string>('');
@@ -912,6 +938,7 @@ export default function App() {
   const handleGuestLogin = async (storedGuestId?: string) => {
     await performAuthActionWithLoader(async () => {
       await executeGuestLogin(storedGuestId);
+      setViewingWorkspace(true);
     });
   };
 
@@ -1506,6 +1533,7 @@ export default function App() {
             const data = await safeParseJson(res, 'Google login response parsing failed.');
             setUser(data.user);
             showToast('Successfully signed in with Google!', 'success');
+            setViewingWorkspace(true);
           } else {
             const data = await res.json().catch(() => ({}));
             showToast(data.error || 'Google login failed.', 'error');
@@ -1572,6 +1600,7 @@ export default function App() {
       } finally {
         localStorage.removeItem('studysphere_guest_user_id');
         setUser(null);
+        setViewingWorkspace(false);
         setBinders([]);
         setSelectedBinderId('');
         setDocuments([]);
@@ -2074,9 +2103,11 @@ export default function App() {
 
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(line.text);
+    const cleanedText = line.text.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').trim();
+    const utterance = new SpeechSynthesisUtterance(cleanedText);
     utteranceRef.current = utterance;
     utterance.rate = podcastSpeed;
+    utterance.pitch = line.speaker === 'Alex' ? 0.95 : 1.15;
 
     // Retrieve compatible browser voices
     const browserVoices = voices.length ? voices : window.speechSynthesis.getVoices();
@@ -2133,7 +2164,9 @@ export default function App() {
 
     utterance.onend = () => {
       if (isPodcastPlayingRef.current) {
-        speakDialogue(index + 1);
+        podcastTimerRef.current = setTimeout(() => {
+          speakDialogue(index + 1);
+        }, 350);
       }
     };
 
@@ -2143,7 +2176,7 @@ export default function App() {
         return;
       }
       // Graceful duration fallback if speech engine fails
-      const delay = Math.max(3000, line.text.split(' ').length * 300 / podcastSpeed);
+      const delay = Math.max(3000, cleanedText.split(' ').length * 300 / podcastSpeed) + 350;
       podcastTimerRef.current = setTimeout(() => {
         if (isPodcastPlayingRef.current) {
           speakDialogue(index + 1);
@@ -2923,9 +2956,9 @@ export default function App() {
   // ========================================================
   // Competitor-Grade Landing Page (Unauthenticated View)
   // ========================================================
-  if (!user) {
+  if (!user || !viewingWorkspace) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col font-sans overflow-y-auto relative">
+      <div className="min-h-screen bg-background text-foreground flex flex-col font-sans overflow-y-auto relative apple-grid">
         {/* Decorative Floating Orbits */}
         <div className="absolute top-[20%] left-[10%] w-[350px] h-[350px] bg-primary/5 rounded-full blur-[120px] pointer-events-none animate-orbit-slow z-0"></div>
         <div className="absolute top-[60%] right-[10%] w-[400px] h-[400px] bg-accent/5 rounded-full blur-[130px] pointer-events-none animate-orbit-slower z-0"></div>
@@ -2969,16 +3002,36 @@ export default function App() {
             </button>
 
             {/* Google Sign-In & Guest Access Navbar Block */}
-            <div className="flex items-center gap-2 border border-border/40 bg-input/10 px-3 py-1 rounded-2xl backdrop-blur shadow-sm">
-              <div id="google-btn-container-nav" className="min-h-[36px] flex items-center justify-center"></div>
-              <div className="h-4 w-[1px] bg-border/40 mx-1"></div>
-              <button
-                onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
-                className="text-xs font-bold text-white transition bg-gradient-to-r from-primary to-accent hover:opacity-95 px-3.5 py-1.5 rounded-xl active:scale-95 duration-200 transform hover:scale-105"
-              >
-                Guest<span className="hidden sm:inline"> Access</span>
-              </button>
-            </div>
+            {user ? (
+              <div className="flex items-center gap-3 bg-input/20 px-3.5 py-1 rounded-2xl border border-border/40 backdrop-blur shadow-sm animate-scale-in">
+                {user.picture ? (
+                  <img src={user.picture} alt={user.name || 'User'} className="w-6 h-6 rounded-full border border-primary/20" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-primary/25 border border-primary/30 flex items-center justify-center font-bold text-xs text-primary">
+                    {user.name ? user.name[0].toUpperCase() : 'U'}
+                  </div>
+                )}
+                <span className="text-xs font-semibold text-foreground hidden sm:inline">{user.name || 'Student'}</span>
+                <div className="h-4 w-[1px] bg-border/40 mx-1"></div>
+                <button
+                  onClick={() => { setViewingWorkspace(true); playSoundEffect('success'); }}
+                  className="text-xs font-bold text-white transition bg-gradient-to-r from-primary to-accent hover:opacity-95 px-4 py-1.5 rounded-xl active:scale-95 duration-200 transform hover:scale-105"
+                >
+                  Enter Workspace
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 border border-border/40 bg-input/10 px-3 py-1 rounded-2xl backdrop-blur shadow-sm">
+                <div id="google-btn-container-nav" className="min-h-[36px] flex items-center justify-center"></div>
+                <div className="h-4 w-[1px] bg-border/40 mx-1"></div>
+                <button
+                  onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+                  className="text-xs font-bold text-white transition bg-gradient-to-r from-primary to-accent hover:opacity-95 px-3.5 py-1.5 rounded-xl active:scale-95 duration-200 transform hover:scale-105"
+                >
+                  Guest<span className="hidden sm:inline"> Access</span>
+                </button>
+              </div>
+            )}
           </div>
         </nav>
 
@@ -3000,13 +3053,23 @@ export default function App() {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 pt-6 max-w-sm mx-auto z-10 relative animate-scale-in" style={{ animationDelay: '200ms' }}>
-            <button
-              onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
-              className="w-full max-w-[280px] py-3.5 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-sm font-extrabold rounded-xl transition duration-300 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
-            >
-              <Zap className="h-4 w-4" />
-              <span>Start Studying Free</span>
-            </button>
+            {user ? (
+              <button
+                onClick={() => { setViewingWorkspace(true); playSoundEffect('success'); }}
+                className="w-full max-w-[280px] py-3.5 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-sm font-extrabold rounded-xl transition duration-300 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Zap className="h-4 w-4" />
+                <span>Go to Workspace</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+                className="w-full max-w-[280px] py-3.5 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-sm font-extrabold rounded-xl transition duration-300 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                <Zap className="h-4 w-4" />
+                <span>Start Studying Free</span>
+              </button>
+            )}
             <p className="text-[10px] text-muted">
               No registration required. Sync across devices using Google login in the top-right.
             </p>
@@ -3302,7 +3365,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="mt-auto py-6 border-t border-border text-center text-[10px] text-muted">
-          <p>© 2026 StudySphere AI. Production workspace active. Supported by Google Generative AI.</p>
+          <p>© 2026 StudySphere AI. Production workspace active. Powered by Zenith Generative AI.</p>
         </footer>
 
       </div>
@@ -3416,7 +3479,7 @@ export default function App() {
             className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-primary border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
           >
             <HelpCircle className="h-4 w-4" />
-            <span>Guide Tour</span>
+            <span>Guided Tour</span>
           </button>
 
           <button
@@ -3534,12 +3597,15 @@ export default function App() {
                 <div
                   key={binder.id}
                   onClick={() => setSelectedBinderId(binder.id)}
-                  className={`group flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${
+                  className={`group relative flex items-center justify-between p-2 pl-3.5 rounded-xl cursor-pointer transition ${
                     selectedBinderId === binder.id
-                      ? 'bg-primary/10 border border-primary/20 text-foreground font-semibold'
+                      ? 'bg-primary/10 border border-primary/20 text-foreground font-semibold shadow-glow-sm'
                       : 'border border-transparent hover:bg-input text-muted hover:text-foreground'
                   }`}
                 >
+                  {selectedBinderId === binder.id && (
+                    <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-gradient-to-b from-primary to-accent rounded-r" />
+                  )}
                   <div className="flex items-center gap-2 truncate pr-2">
                     <BookOpen className={`h-4 w-4 flex-shrink-0 ${selectedBinderId === binder.id ? 'text-primary' : 'text-muted'}`} />
                     <span className="text-xs truncate">{binder.name}</span>
@@ -3640,7 +3706,7 @@ export default function App() {
                       {documents.map(doc => (
                         <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg bg-input/40 border border-border hover:bg-input transition text-xs text-muted hover:text-foreground">
                           <div className="flex items-center gap-1.5 truncate pr-2">
-                            <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                            <FileText className={`h-3.5 w-3.5 ${getFileIconColor(doc.name)} flex-shrink-0`} />
                             <span className="truncate text-[10px]" title={doc.name}>{doc.name}</span>
                           </div>
                           <div className="flex items-center gap-1 relative">
@@ -3767,7 +3833,7 @@ export default function App() {
                 className="flex items-center justify-center gap-1.5 py-2 px-2 bg-secondary hover:bg-input text-primary border border-border/45 rounded-xl text-[10.5px] font-bold transition duration-200"
               >
                 <HelpCircle className="h-3.5 w-3.5 text-primary" />
-                <span>Guide Tour</span>
+                <span>Guided Tour</span>
               </button>
 
               <button
