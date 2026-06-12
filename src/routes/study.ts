@@ -533,6 +533,96 @@ router.post('/binders/:binderId/documents', upload.array('files', 10), async (re
   }
 });
 
+router.post('/binders/:binderId/documents/url', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const binderId = req.params.binderId as string;
+    const userId = req.user!.userId;
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+      res.status(400).json({ error: 'A valid website URL starting with http/https is required.' });
+      return;
+    }
+
+    // Verify binder ownership
+    const binder = await prisma.binder.findFirst({
+      where: { id: binderId, userId },
+    });
+
+    if (!binder) {
+      res.status(404).json({ error: 'Binder not found or unauthorized.' });
+      return;
+    }
+
+    // Fetch page content using our search library utility
+    const content = await fetchPageContent(url);
+    if (!content || content.trim().length === 0) {
+      res.status(400).json({ error: 'Could not fetch readable text from this website. The page might be empty or blocking automated requests.' });
+      return;
+    }
+
+    // Extract title from URL or generate a name
+    let docName = url.replace(/^https?:\/\/(www\.)?/, '').substring(0, 50);
+    if (docName.length === 50) docName += '...';
+    docName = `[Web Scrape] ${docName}`;
+
+    // Create document in binder
+    const newDoc = await prisma.document.create({
+      data: {
+        binderId,
+        name: docName,
+        fileType: 'web-crawler',
+        content,
+      }
+    });
+
+    // Segment text into semantic chunks and generate vector embeddings
+    const chunks = chunkText(content, docName);
+    if (chunks && chunks.length > 0) {
+      logger.info('Generating vector embeddings for %d chunk(s) of URL %s...', chunks.length, url);
+      try {
+        const embeddings = await gemini.getEmbeddings(chunks);
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkTextVal = chunks[i];
+          const vector = embeddings[i];
+          if (!vector) continue;
+          const vectorStr = `[${vector.join(',')}]`;
+          
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO "DocumentChunk" (id, "documentId", content, embedding, "createdAt") VALUES ($1, $2, $3, $4::vector, NOW())`,
+            crypto.randomUUID(),
+            newDoc.id,
+            chunkTextVal,
+            vectorStr
+          );
+        }
+        logger.info('Successfully stored vector chunks for URL %s.', url);
+      } catch (embErr: any) {
+        logger.error('Failed to generate/store embeddings for URL %s: %s', url, embErr.message);
+        // Fall back gracefully so document creation still succeeds
+      }
+    }
+
+    // Auto-generate flashcards in background asynchronously
+    generateFlashcardsForBinderBackground(binderId, userId).catch(err => {
+      logger.error('Failed to auto-generate flashcards for binder %s: %s', binderId, err.stack || err.message);
+    });
+
+    res.status(201).json({
+      message: 'Successfully scraped page and added to binder.',
+      document: {
+        id: newDoc.id,
+        name: newDoc.name,
+        fileType: newDoc.fileType,
+        createdAt: newDoc.createdAt
+      }
+    });
+  } catch (error: any) {
+    logger.error('Failed to scrape and ingest URL: %s', error.stack || error.message);
+    res.status(500).json({ error: 'Failed to scrape and ingest URL.' });
+  }
+});
+
 router.get('/binders/:binderId/documents', async (req: Request, res: Response): Promise<void> => {
   try {
     const binderId = req.params.binderId as string;
@@ -848,8 +938,8 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
     // Record token usage
     await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Synthesis Query');
 
-    // Save historical study record (skip for guest users)
-    if (!req.user!.isGuest) {
+    // Save historical study record
+    try {
       await prisma.studyHistory.create({
         data: {
           userId,
@@ -857,6 +947,8 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
           response: result.text,
         },
       });
+    } catch (dbErr) {
+      logger.error('Failed to save study query history: %s', dbErr);
     }
 
     res.json({
@@ -878,6 +970,7 @@ router.post('/binders/:binderId/flashcards/generate', async (req: Request, res: 
   try {
     const binderId = req.params.binderId as string;
     const userId = req.user!.userId;
+    const { prompt, count } = req.body || {};
 
     const binder = await prisma.binder.findFirst({
       where: { id: binderId, userId },
@@ -898,9 +991,12 @@ router.post('/binders/:binderId/flashcards/generate', async (req: Request, res: 
       .map(doc => `[Doc: ${doc.name}]\n${doc.content}`)
       .join('\n\n');
 
+    const cardCount = count ? parseInt(count, 10) : 10;
+    const customPromptInstruction = prompt ? `\nFocus instructions: ${prompt}\n` : '';
+
     const systemPrompt = `
 You are a StudySphere Flashcard Generator.
-Analyze the provided study documents and generate 6-10 high-quality flashcards following the spaced repetition format.
+Analyze the provided study documents and generate exactly ${cardCount} high-quality flashcards following the spaced repetition format.${customPromptInstruction}
 Each flashcard must have a "front" (a clear, direct question, concept prompt, or fill-in-the-blank) and a "back" (a brief, accurate answer or explanation, maximum 2 sentences).
 
 Your output MUST be a valid JSON array of flashcard objects:

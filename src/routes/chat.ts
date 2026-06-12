@@ -390,19 +390,17 @@ ${userQuery}
     // Record token usage
     await recordTokenUsage(userId, 'gemini-3.1-flash-lite', streamResult.usage, 'Study Chat');
 
-    // Save study history record at the end of the streaming response (skip for guest users)
-    if (!req.user!.isGuest) {
-      try {
-        await prisma.studyHistory.create({
-          data: {
-            userId,
-            query: userQuery,
-            response: fullGeneratedText,
-          },
-        });
-      } catch (dbErr) {
-        logger.error('Failed to save chat stream history: %s', dbErr);
-      }
+    // Save study history record at the end of the streaming response
+    try {
+      await prisma.studyHistory.create({
+        data: {
+          userId,
+          query: userQuery,
+          response: fullGeneratedText,
+        },
+      });
+    } catch (dbErr) {
+      logger.error('Failed to save chat stream history: %s', dbErr);
     }
 
     res.write('data: [DONE]\n\n');

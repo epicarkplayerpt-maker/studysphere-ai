@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, CheckCircle, RefreshCw, Eye } from 'lucide-react';
+import { Layers, Plus, CheckCircle, RefreshCw, Eye, Sparkles, Loader2 } from 'lucide-react';
 
 interface Flashcard {
   id: string;
@@ -71,6 +71,12 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, bind
   const [showAddForm, setShowAddForm] = useState<boolean>(false);
   const [front, setFront] = useState<string>('');
   const [back, setBack] = useState<string>('');
+
+  // AI Prompt Flashcard Generator State
+  const [showAIForm, setShowAIForm] = useState<boolean>(false);
+  const [aiPrompt, setAiPrompt] = useState<string>('');
+  const [aiCount, setAiCount] = useState<number>(15);
+  const [generatingAICards, setGeneratingAICards] = useState<boolean>(false);
 
   const fetchCards = async () => {
     try {
@@ -169,6 +175,32 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, bind
     }
   };
 
+  const handleAIGenerateCards = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!binderId) return;
+    try {
+      setGeneratingAICards(true);
+      setError(null);
+      const res = await fetch(`/api/study/binders/${binderId}/flashcards/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ prompt: aiPrompt, count: aiCount }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to generate flashcards from AI.');
+      }
+      setAiPrompt('');
+      setShowAIForm(false);
+      await fetchCards();
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate cards.');
+    } finally {
+      setGeneratingAICards(false);
+    }
+  };
+
   const currentCard = cards[currentIndex];
 
   return (
@@ -189,12 +221,27 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, bind
             Show Due Only
           </label>
           <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition"
+            onClick={() => {
+              setShowAddForm(!showAddForm);
+              setShowAIForm(false);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Card
           </button>
+          {binderId && (
+            <button
+              onClick={() => {
+                setShowAIForm(!showAIForm);
+                setShowAddForm(false);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#6366f1]/20 text-[#818cf8] border border-[#6366f1]/40 hover:bg-[#6366f1]/35 rounded-lg transition"
+            >
+              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+              AI Prompt Generate
+            </button>
+          )}
         </div>
       </div>
 
@@ -238,6 +285,70 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, bind
               className="px-4 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg font-semibold"
             >
               Save Card
+            </button>
+          </div>
+        </form>
+      )}
+
+      {showAIForm && (
+        <form onSubmit={handleAIGenerateCards} className="glass-panel p-5 rounded-xl space-y-4 border border-[#6366f1]/20">
+          <div className="flex items-center gap-1.5 border-b border-border pb-2">
+            <Sparkles className="h-4 w-4 text-[#818cf8]" />
+            <h3 className="text-sm font-semibold text-foreground">AI Prompt Flashcard Generator</h3>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-muted mb-1">Focus Prompt / Instructions (Optional)</label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="e.g. Focus on memory safety and heap allocations, or leave empty to synthesize all binder content"
+                className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">Number of Cards to Generate</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={50}
+                  value={aiCount}
+                  onChange={(e) => setAiCount(parseInt(e.target.value, 10))}
+                  className="flex-1 accent-primary bg-input"
+                />
+                <span className="text-xs font-bold text-foreground bg-input px-2.5 py-1 rounded border border-border min-w-[50px] text-center">
+                  {aiCount} Cards
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 text-xs pt-2">
+            <button
+              type="button"
+              onClick={() => setShowAIForm(false)}
+              className="px-3 py-1.5 text-muted hover:text-foreground"
+              disabled={generatingAICards}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-1.5 bg-gradient-to-r from-primary to-indigo-600 text-white hover:opacity-95 rounded-lg font-semibold flex items-center gap-1.5 disabled:opacity-50"
+              disabled={generatingAICards}
+            >
+              {generatingAICards ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3" />
+                  Generate Cards
+                </>
+              )}
             </button>
           </div>
         </form>

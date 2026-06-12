@@ -1032,6 +1032,8 @@ export default function App() {
   // Upload Progress State
   const [uploads, setUploads] = useState<Record<string, UploadProgress>>({});
   const [dragActive, setDragActive] = useState<boolean>(false);
+  const [urlToIngest, setUrlToIngest] = useState<string>('');
+  const [scrapingUrl, setScrapingUrl] = useState<boolean>(false);
 
   // Active Study Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -2353,6 +2355,33 @@ export default function App() {
     });
   };
 
+  const handleIngestURL = async () => {
+    if (!selectedBinderId || !urlToIngest.trim()) return;
+    try {
+      setScrapingUrl(true);
+      const res = await fetch(`/api/study/binders/${selectedBinderId}/documents/url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ url: urlToIngest }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast('Web page successfully crawled and added to binder context!', 'success');
+        setUrlToIngest('');
+        fetchDocuments();
+        playSoundEffect('correct');
+      } else {
+        showToast(data.error || 'Failed to crawl web page.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error connecting to web crawler endpoint.', 'error');
+    } finally {
+      setScrapingUrl(false);
+    }
+  };
+
   const renderChatArtifact = (type: string, binderId?: string, questionCount?: number) => {
     const activeBinderId = binderId || selectedBinderId;
     
@@ -3325,10 +3354,10 @@ export default function App() {
         </section>
 
         {/* Product Comparison Matrix */}
-        <section className="py-12 bg-secondary/20 border-t border-border px-6 max-w-4xl mx-auto w-full space-y-6 z-10">
+        <section className="py-12 bg-secondary/20 border-t border-border px-6 max-w-5xl mx-auto w-full space-y-6 z-10">
           <div className="text-center space-y-1">
-            <h2 className="text-xl md:text-2xl font-bold text-foreground">Comparison Matrix</h2>
-            <p className="text-xs text-muted">Why StudySphere is the ideal choice for stateful study synthesis.</p>
+            <h2 className="text-xl md:text-2xl font-bold text-foreground">Zenith AI vs. Best Study Tools</h2>
+            <p className="text-xs text-muted">Why Zenith AI is the ultimate choice for stateful study synthesis.</p>
           </div>
 
           <div className="overflow-x-auto border border-border rounded-xl">
@@ -3336,35 +3365,47 @@ export default function App() {
               <thead>
                 <tr className="bg-input border-b border-border">
                   <th className="p-3 font-semibold text-foreground">Features</th>
-                  <th className="p-3 font-semibold text-primary">StudySphere AI (Zenith)</th>
+                  <th className="p-3 font-semibold text-primary">Zenith AI (StudySphere)</th>
+                  <th className="p-3 font-semibold text-muted">NotebookLM</th>
                   <th className="p-3 font-semibold text-muted">Mindgrasp AI</th>
-                  <th className="p-3 font-semibold text-muted">Turbo AI</th>
+                  <th className="p-3 font-semibold text-muted">Quizlet</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 <tr>
-                  <td className="p-3 text-foreground/90">HTTP-only Session Security</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Hardened</td>
-                  <td className="p-3 text-muted">Local-storage JWT (Vuln)</td>
-                  <td className="p-3 text-muted">Local-storage JWT (Vuln)</td>
-                </tr>
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">Multi-file Synthesized Index</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> 50MB Limit (Full Binder)</td>
-                  <td className="p-3 text-muted">Basic Single File</td>
-                  <td className="p-3 text-muted">Basic Single File</td>
+                  <td className="p-3 text-foreground/90 font-medium">Multi-file RAG Indexing</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> 50MB Binder + Web Crawler</td>
+                  <td className="p-3 text-muted">Multi-doc files (No URL crawler)</td>
+                  <td className="p-3 text-muted">Basic single file summarization</td>
+                  <td className="p-3 text-muted">Manual flashcard sets only</td>
                 </tr>
                 <tr>
                   <td className="p-3 text-foreground/90 font-medium">Active Recall (SM-2 Cards)</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Relational DB Sync</td>
-                  <td className="p-3 text-muted">Static Summaries Only</td>
-                  <td className="p-3 text-muted">Static Flashcards</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Relational Postgres DB Sync</td>
+                  <td className="p-3 text-muted">No database sync or recall engine</td>
+                  <td className="p-3 text-muted">Static summaries per document</td>
+                  <td className="p-3 text-muted">Standard flashcards (No AI prompts)</td>
+                </tr>
+                <tr>
+                  <td className="p-3 text-foreground/90 font-medium">Organic Conversational Review</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Interactive Voice Pods</td>
+                  <td className="p-3 text-muted">Studio Audio Pods (Static)</td>
+                  <td className="p-3 text-muted">Simple TTS reading (no interaction)</td>
+                  <td className="p-3 text-muted">No speech synthesis or reviews</td>
                 </tr>
                 <tr>
                   <td className="p-3 text-foreground/90 font-medium">Adaptive Mock Exam Engine</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Gap Reviews & Weaknesses</td>
-                  <td className="p-3 text-muted">Static Questions</td>
-                  <td className="p-3 text-muted">Basic Multiple Choice</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Gap Reviews & Weakness Tracking</td>
+                  <td className="p-3 text-muted">No practice exams or grading stats</td>
+                  <td className="p-3 text-muted">Static multiple-choice questions</td>
+                  <td className="p-3 text-muted">Basic practice tests (no doc analysis)</td>
+                </tr>
+                <tr>
+                  <td className="p-3 text-foreground/90 font-medium">HTTP-only Session Security</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Hardened OAuth & Cookies</td>
+                  <td className="p-3 text-muted">Standard Google accounts</td>
+                  <td className="p-3 text-muted">Local-storage JWT cookies (Vuln)</td>
+                  <td className="p-3 text-muted">Basic web session trackers</td>
                 </tr>
               </tbody>
             </table>
@@ -3643,26 +3684,52 @@ export default function App() {
             <div className="p-3 flex-1 flex flex-col overflow-y-auto space-y-3">
               {/* Drop-zone */}
               {selectedBinderId ? (
-                <div
-                  id="tour-step-upload"
-                  onDragEnter={handleDrag}
-                  onDragOver={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-xl p-3.5 text-center transition flex flex-col justify-center items-center gap-1 cursor-pointer ${
-                    dragActive 
-                      ? 'border-primary bg-primary/10' 
-                      : `border-border hover:border-muted-foreground/40 bg-input/20 ${tourStep === 3 ? 'tour-pulse-active border-primary relative z-[9992] bg-secondary' : ''}`
-                  }`}
-                >
-                  <Upload className="h-5 w-5 text-muted" />
-                  <span className="text-[10.5px] font-semibold text-foreground">Drag & drop context files here</span>
-                  <label className="text-[9.5px] px-2.5 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg cursor-pointer transition">
-                    Browse Files
-                    <input type="file" multiple onChange={handleFileSelect} className="hidden" />
-                  </label>
-                  <span className="text-[8.5px] text-muted">Supports PDF, DOCX, Code, Text</span>
-                </div>
+                <>
+                  <div
+                    id="tour-step-upload"
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-xl p-3.5 text-center transition flex flex-col justify-center items-center gap-1 cursor-pointer ${
+                      dragActive 
+                        ? 'border-primary bg-primary/10' 
+                        : `border-border hover:border-muted-foreground/40 bg-input/20 ${tourStep === 3 ? 'tour-pulse-active border-primary relative z-[9992] bg-secondary' : ''}`
+                    }`}
+                  >
+                    <Upload className="h-5 w-5 text-muted" />
+                    <span className="text-[10.5px] font-semibold text-foreground">Drag & drop context files here</span>
+                    <label className="text-[9.5px] px-2.5 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg cursor-pointer transition">
+                      Browse Files
+                      <input type="file" multiple onChange={handleFileSelect} className="hidden" />
+                    </label>
+                    <span className="text-[8.5px] text-muted">Supports PDF, DOCX, Code, Text</span>
+                  </div>
+
+                  {/* Web Page Scraper Ingestion */}
+                  <div className="bg-input/20 border border-border/40 p-2.5 rounded-xl space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Globe className="h-3.5 w-3.5 text-accent animate-pulse" />
+                      <span className="text-[10px] font-bold text-foreground">Index Web Page URL</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="url"
+                        placeholder="https://example.com/notes"
+                        value={urlToIngest}
+                        onChange={(e) => setUrlToIngest(e.target.value)}
+                        className="flex-1 bg-input border border-border text-[9.5px] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                      />
+                      <button
+                        onClick={handleIngestURL}
+                        disabled={scrapingUrl || !urlToIngest.trim()}
+                        className="px-2.5 py-1 bg-primary text-primary-foreground text-[9.5px] font-bold rounded hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center min-w-[55px]"
+                      >
+                        {scrapingUrl ? 'Scraping...' : 'Crawl'}
+                      </button>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="border border-border rounded-xl p-3 text-center text-xs text-muted bg-input/20">
                   Select a binder above to enable ingestion.
@@ -3914,6 +3981,33 @@ export default function App() {
               className={`flex-1 flex flex-col min-h-0 max-w-5xl xl:max-w-6xl mx-auto w-full ${tourStep === 5 ? 'relative z-[9992] bg-background border border-primary/20 p-4 rounded-2xl shadow-2xl' : ''}`}
             >
               
+              {selectedBinderId && (
+                <div className="flex-shrink-0 bg-secondary/30 border border-border/40 px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2.5 mb-3 backdrop-blur-md">
+                  <div className="flex items-center gap-2 text-[10px] sm:text-xs">
+                    <div className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </div>
+                    <span className="text-muted">
+                      Active Context: <strong className="text-foreground font-semibold">{binders.find(b => b.id === selectedBinderId)?.name}</strong>
+                    </span>
+                    <span className="text-border">|</span>
+                    <span className="text-[9.5px] text-muted-foreground bg-input/40 px-2 py-0.5 rounded-md border border-border/30">
+                      {documents.filter(d => d.fileType !== 'web-crawler').length} files
+                    </span>
+                    {documents.filter(d => d.fileType === 'web-crawler').length > 0 && (
+                      <span className="text-[9.5px] text-[#818cf8] bg-[#6366f1]/15 px-2 py-0.5 rounded-md border border-[#6366f1]/25">
+                        {documents.filter(d => d.fileType === 'web-crawler').length} web pages
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[9.5px] text-muted-foreground flex items-center gap-1 font-mono">
+                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                    <span>Zenith AI Online</span>
+                  </div>
+                </div>
+              )}
+
               {/* Chat Feed Messages Area */}
               <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1 scrollbar-none">
                 {chatMessages.length === 0 ? (
