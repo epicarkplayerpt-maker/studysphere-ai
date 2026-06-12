@@ -1853,6 +1853,15 @@ export default function App() {
         context += `- Suggested Learning Pathways: ${suggestedPathways.join(', ')}\n`;
       }
     }
+
+    if (chatMessages.length > 0) {
+      context += `- Active Chat Tab Conversation History (Last 10 turns):\n`;
+      const recentMessages = chatMessages.slice(-10);
+      recentMessages.forEach(msg => {
+        context += `  * [${msg.role.toUpperCase()}]: ${msg.content.substring(0, 1000)}\n`;
+      });
+      context += `\n`;
+    }
     
     return context + `[END OF SCREEN CONTEXT]\n\n`;
   };
@@ -2925,7 +2934,7 @@ export default function App() {
         <nav className="h-16 border-b border-border bg-secondary/80 backdrop-blur-md sticky top-0 z-50 px-6 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <StudySphereLogo size="small" />
-            <span className="font-bold text-sm tracking-tight text-foreground">StudySphere <span className="text-primary font-normal">AI</span></span>
+            <span className="hidden sm:inline font-bold text-sm tracking-tight text-foreground">StudySphere <span className="text-primary font-normal">AI</span></span>
           </div>
           <div className="flex items-center gap-4">
             {/* Lofi study music synth on landing page */}
@@ -2942,7 +2951,7 @@ export default function App() {
                 });
                 playSoundEffect('click');
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[10.5px] font-bold transition transform hover:scale-105 active:scale-95 duration-200 ${
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[10.5px] font-bold transition transform hover:scale-105 active:scale-95 duration-200 ${
                 studyMusicPlaying
                   ? 'bg-[#6366f1]/15 border-[#6366f1] text-[#6366f1] shadow-glow animate-pulse'
                   : 'hover:bg-input border-border/40 text-muted hover:text-foreground'
@@ -2967,7 +2976,7 @@ export default function App() {
                 onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
                 className="text-xs font-bold text-white transition bg-gradient-to-r from-primary to-accent hover:opacity-95 px-3.5 py-1.5 rounded-xl active:scale-95 duration-200 transform hover:scale-105"
               >
-                Guest Access
+                Guest<span className="hidden sm:inline"> Access</span>
               </button>
             </div>
           </div>
@@ -3307,7 +3316,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
       
       {/* Top Banner Header */}
-      <header className="h-20 border-b border-border/30 bg-secondary/80 backdrop-blur-xl sticky top-0 z-40 px-8 flex justify-between items-center shadow-lg shadow-black/2 hover:shadow-xl transition-shadow duration-300">
+      <header className="h-20 border-b border-border/30 bg-secondary/80 backdrop-blur-xl sticky top-0 z-40 px-4 sm:px-8 flex justify-between items-center shadow-lg shadow-black/2 hover:shadow-xl transition-shadow duration-300">
         <div className="flex items-center gap-3.5">
           {/* Left panel menu toggler */}
           <button
@@ -3320,7 +3329,7 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             <StudySphereLogo size="medium" />
-            <h1 className="font-extrabold text-base tracking-tight text-foreground">StudySphere <span className="text-primary font-light">AI</span></h1>
+            <h1 className="hidden sm:inline font-extrabold text-base tracking-tight text-foreground">StudySphere <span className="text-primary font-light">AI</span></h1>
           </div>
         </div>
 
@@ -3352,7 +3361,7 @@ export default function App() {
               });
               playSoundEffect('click');
             }}
-            className={`p-2 border rounded-xl transition transform hover:scale-105 active:scale-95 duration-200 flex items-center gap-1.5 ${
+            className={`hidden sm:flex p-2 border rounded-xl transition transform hover:scale-105 active:scale-95 duration-200 items-center gap-1.5 ${
               studyMusicPlaying
                 ? 'bg-[#6366f1]/15 border-[#6366f1] text-[#6366f1]'
                 : 'hover:bg-input border-border/40 text-muted hover:text-foreground'
@@ -3412,11 +3421,11 @@ export default function App() {
 
           <button
             onClick={() => { setShowMemoryModal(true); playSoundEffect('click'); }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-accent border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
+            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-accent border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
             title="Configure Personal AI Memory"
           >
             <Brain className="h-4 w-4 text-accent" />
-            <span>AI Memory</span>
+            <span className="hidden md:inline">AI Memory</span>
           </button>
 
           {/* Admin Dashboard Switcher */}
@@ -3426,7 +3435,7 @@ export default function App() {
                 setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
                 playSoundEffect('click');
               }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 border rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200 ${
+              className={`hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 border rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200 ${
                 activeTab === 'admin'
                   ? 'bg-primary/15 border-primary text-primary shadow-glow'
                   : 'bg-input hover:bg-secondary border-border/45 text-muted hover:text-foreground'
@@ -3434,7 +3443,7 @@ export default function App() {
               title="Toggle Dashboard Metrics & Prompts"
             >
               <TrendingUp className="h-4 w-4" />
-              <span>Admin View</span>
+              <span className="hidden md:inline">Admin View</span>
             </button>
           )}
 
@@ -3450,7 +3459,7 @@ export default function App() {
           {/* Quick Start Tour */}
           <button
             onClick={() => { setTourStep(1); playSoundEffect('click'); }}
-            className="p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
+            className="hidden md:flex p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
             title="Start Onboarding Tour"
           >
             <HelpCircle className="h-4.5 w-4.5" />
@@ -3740,6 +3749,67 @@ export default function App() {
             </div>
           </div>
 
+          {/* Mobile Quick Actions (only visible on mobile/tablet viewports) */}
+          <div className="p-3 bg-input/20 border-t border-border flex-shrink-0 sm:hidden space-y-2.5">
+            <span className="text-[9px] font-bold text-muted uppercase tracking-widest block pl-1">Mobile Quick Actions</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => { setShowMemoryModal(true); playSoundEffect('click'); setSidebarOpen(false); }}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 bg-secondary hover:bg-input text-accent border border-border/45 rounded-xl text-[10.5px] font-bold transition duration-200"
+                title="Configure Personal AI Memory"
+              >
+                <Brain className="h-3.5 w-3.5 text-accent" />
+                <span>AI Memory</span>
+              </button>
+
+              <button
+                onClick={() => { setTourStep(1); playSoundEffect('click'); setSidebarOpen(false); }}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 bg-secondary hover:bg-input text-primary border border-border/45 rounded-xl text-[10.5px] font-bold transition duration-200"
+              >
+                <HelpCircle className="h-3.5 w-3.5 text-primary" />
+                <span>Guide Tour</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setStudyMusicPlaying(prev => {
+                    const next = !prev;
+                    if (next) startLofiMusic();
+                    else stopLofiMusic();
+                    return next;
+                  });
+                  playSoundEffect('click');
+                }}
+                className={`col-span-2 flex items-center justify-center gap-1.5 py-2 px-3 border rounded-xl text-[10.5px] font-bold transition duration-200 ${
+                  studyMusicPlaying
+                    ? 'bg-[#6366f1]/15 border-[#6366f1] text-[#6366f1]'
+                    : 'bg-secondary hover:bg-input border-border/45 text-muted hover:text-foreground'
+                }`}
+              >
+                <Headphones className={`h-3.5 w-3.5 ${studyMusicPlaying ? 'animate-bounce' : ''}`} />
+                <span>{studyMusicPlaying ? 'Stop Lofi Music' : 'Start Lofi Music'}</span>
+              </button>
+
+              {user?.email === 'epicarkplayerpt@gmail.com' && (
+                <button
+                  onClick={() => {
+                    setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
+                    playSoundEffect('click');
+                    setSidebarOpen(false);
+                  }}
+                  className={`col-span-2 flex items-center justify-center gap-1.5 py-2 px-3 border rounded-xl text-[10.5px] font-bold transition duration-200 ${
+                    activeTab === 'admin'
+                      ? 'bg-primary/15 border-primary text-primary shadow-glow'
+                      : 'bg-secondary hover:bg-input border-border/45 text-muted hover:text-foreground'
+                  }`}
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>Admin View</span>
+                </button>
+              )}
+            </div>
+          </div>
+
         </aside>
 
         {/* Sidebar overlay backdrop on mobile screens */}
@@ -4014,40 +4084,42 @@ export default function App() {
         <aside className={`fixed inset-y-0 right-0 z-50 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${rightSidebarOpen ? 'translate-x-0 lg:w-[460px] lg:border-l' : 'translate-x-full lg:translate-x-0 lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
           
           {/* Header tabs toggle */}
-          <div 
-            id="tour-step-tools"
-            className={`border-b border-border p-2 bg-input/20 flex flex-wrap gap-1 flex-shrink-0 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
-          >
-            {[
-              { id: 'viewer', label: 'Reader', icon: FileText },
-              { id: 'guide', label: 'Syllabus', icon: BookMarked },
-              { id: 'podcast', label: 'Audio Review', icon: SpeakerIcon },
-              { id: 'srs', label: 'Study Cards', icon: Layers },
-              { id: 'quiz', label: 'Practice Exam', icon: Award },
-              { id: 'gaps', label: 'Weaknesses', icon: TrendingUp },
-            ].map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeRightTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
-                  className={`flex-1 min-w-[62px] flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted hover:bg-input hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-3 w-3" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+          <div className="border-b border-border bg-input/20 flex items-center justify-between flex-shrink-0 pr-2">
+            <div 
+              id="tour-step-tools"
+              className={`flex-1 flex overflow-x-auto scrollbar-none whitespace-nowrap gap-1 p-2 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
+            >
+              {[
+                { id: 'viewer', label: 'Reader', icon: FileText },
+                { id: 'guide', label: 'Syllabus', icon: BookMarked },
+                { id: 'podcast', label: 'Audio Review', icon: SpeakerIcon },
+                { id: 'srs', label: 'Study Cards', icon: Layers },
+                { id: 'quiz', label: 'Practice Exam', icon: Award },
+                { id: 'gaps', label: 'Weaknesses', icon: TrendingUp },
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeRightTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
+                    className={`flex-1 flex-shrink-0 min-w-[62px] flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted hover:bg-input hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
             
-            {/* Close side panel button */}
+            {/* Close side panel button pinned to the right */}
             <button
               onClick={() => setRightSidebarOpen(false)}
-              className="px-2 text-muted hover:text-foreground transition ml-auto animate-fade-in"
+              className="px-2 py-2 text-muted hover:text-foreground transition flex-shrink-0 ml-1 animate-fade-in border-l border-border/20"
               title="Close panel"
             >
               <X className="h-3.5 w-3.5" />

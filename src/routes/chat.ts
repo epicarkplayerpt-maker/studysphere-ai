@@ -47,11 +47,11 @@ Always answer questions, analyze schedules, generate exams, and formulate querie
 You are the Zenith AI Interactive Assistant.
 You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies.
 
-[HIGH-FIDELITY RETRIEVAL MODE]
+[HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
 You operate in High-Fidelity Retrieval mode. When answering questions based on the uploaded documents or web search results:
 1. Prioritize peer-reviewed scientific journals, authoritative textbook chapters, government (.gov/.edu) publications, and primary sources.
 2. Always cite specific source files, section names, or paper titles when citing information.
-3. Do not synthesize or hallucinate claims. If the exact answer is not present in the provided document context or authoritative search results, explicitly state the limitations of the current retrieval context.
+3. STRICT HALLUCINATION RULE: You must NEVER hallucinate, invent facts, or present unverified information. If the exact answer is not present in the provided document context or authoritative search results, or if you do not know something, explicitly state: "I do not have access to that information in the provided context." Do not fabricate answers.
 4. Ensure complete fidelity to technical terms, definitions, formulas, and data structures.
 
 You can perform and assist with all tools:
@@ -62,13 +62,13 @@ You can perform and assist with all tools:
 5. Master Study Syllabus: Aggregating all binder documents into a structured master syllabus.
 
 Interactive Study Workspaces:
-[CRITICAL DESIGN RULE] Do NOT automatically embed or generate interactive study tools (quizzes, cards, syllabi, weakness reports) for normal questions. Only output the following exact XML tags when the user explicitly asks to 'generate a quiz', 'create flashcards', 'find weaknesses', 'start podcast/audio review', 'create syllabus', or similar direct request commands:
+You are empowered to suggest and embed interactive study tools (quizzes, cards, syllabi, weakness reports, audio briefings) at ANY point in the conversation when it would enrich the user's learning process, test their knowledge, summarize key points, or guide their review. Do not hesitate to invoke them. To embed them, output the following exact XML tags in your response (you can explain them using markdown before or after the tag):
 - Smart Study Cards: Output \`<study-artifact type="flashcards" binderId="BINDER_ID"></study-artifact>\`
 - Practice Exam / Quiz: Output \`<study-artifact type="quiz" binderId="BINDER_ID" questionCount="NUM"></study-artifact>\`
 - Study Weakness Finder: Output \`<study-artifact type="weaknesses" binderId="BINDER_ID"></study-artifact>\`
 - Audio Study Review: Output \`<study-artifact type="audio-review" binderId="BINDER_ID"></study-artifact>\`
 - Master Study Syllabus: Output \`<study-artifact type="syllabus" binderId="BINDER_ID"></study-artifact>\`
-Replace BINDER_ID with the active binder ID (or leave it empty/omit it if not available). You can include standard markdown text before or after these tags explaining what they are.
+Replace BINDER_ID with the active binder ID (or leave it empty/omit it if not available).
 
 Formatting Guidelines:
 - Markdown: Always format your output cleanly using markdown. Keep headings hierarchical (h2, h3).
@@ -210,7 +210,7 @@ Output only the raw search query terms, one per line. Do not include markdown co
           let forceText = '';
           for (const doc of mentionedDocs) {
             if (doc.content) {
-              const docSnippet = doc.content.substring(0, 150000);
+              const docSnippet = doc.content;
               forceText += `<document filename="${doc.name}">\n${docSnippet}\n</document>\n\n`;
             }
           }
@@ -263,7 +263,7 @@ Output only the raw search query terms, one per line. Do not include markdown co
           let fallbackText = '';
           for (const doc of binderDocs) {
             if (doc.content) {
-              const docSnippet = doc.content.substring(0, 150000); // Limit size per file to prevent prompt overflow
+              const docSnippet = doc.content;
               fallbackText += `<document filename="${doc.name}">\n${docSnippet}\n</document>\n\n`;
             }
           }

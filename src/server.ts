@@ -43,7 +43,7 @@ const PORT = process.env.NODE_ENV === 'production' ? 8080 : (process.env.PORT ||
 // ==========================================
 app.use(
   helmet({
-    crossOriginOpenerPolicy: false,
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginResourcePolicy: false,
     crossOriginEmbedderPolicy: false,
     contentSecurityPolicy: {

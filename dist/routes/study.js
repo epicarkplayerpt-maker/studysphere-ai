@@ -324,7 +324,7 @@ async function generateFlashcardsForBinderBackground(binderId, userId) {
             return;
         }
         const documentsText = binder.documents
-            .map(doc => `[Doc: ${doc.name}]\n${doc.content.slice(0, 15000)}`)
+            .map(doc => `[Doc: ${doc.name}]\n${doc.content}`)
             .join('\n\n');
         const systemPrompt = `
 You are a StudySphere Flashcard Generator.
@@ -732,7 +732,7 @@ router.post('/binders/:binderId/flashcards/generate', async (req, res) => {
             return;
         }
         const documentsText = binder.documents
-            .map(doc => `[Doc: ${doc.name}]\n${doc.content.slice(0, 15000)}`)
+            .map(doc => `[Doc: ${doc.name}]\n${doc.content}`)
             .join('\n\n');
         const systemPrompt = `
 You are a StudySphere Flashcard Generator.
@@ -1163,11 +1163,17 @@ router.post('/binders/:binderId/podcast', async (req, res) => {
         });
         const customInstructions = userRecord?.customInstructions || '';
         const systemPrompt = `
-You are an expert podcast writer. Create a script of an engaging, conversational, yet highly educational audio overview between two AI hosts:
-- Alex: An enthusiastic, inquisitive co-host who asks practical questions, connects topics to real-world applications, and keeps the conversation lively.
-- Taylor: A brilliant academic researcher who provides clear, structured explanations, breaks down complex topics, and references the specific source documents.
+You are the script writer for NotebookLM's famous Audio Overview.
+Create an engaging, highly conversational, and incredibly natural podcast dialogue script between two hosts:
+- Alex (Male Voice tone): Enthusiastic, inquisitive, loves analogies, asks practical and sometimes skeptical questions, interrupts naturally with thoughts, and uses phrases like "Wait, what?", "Oh, interesting!", "Hold on a second."
+- Taylor (Female Voice tone): Brilliant, clear, conversational, uses friendly banter, breaks down complex academic jargon into clear layperson terms, and relates technical concepts back to the source documents.
 
-The hosts should discuss the key concepts, themes, and ideas present in the provided study documents.
+CRITICAL INSTRUCTIONS for NotebookLM Realism:
+1. Banish Dry Reading: The hosts should sound like real people who are excited about this material. Do not just present facts; make it a discussion.
+2. Banter & Interjections: Include vocal markers and informal speech (e.g., "(laughs)", "(chuckles)", "Right, exactly!", "Wait, really?", "Let's unpack that," "Wow, that's wild.").
+3. Analogies: Taylor should explain complicated technical terms using relatable, visual analogies (e.g., "Think of it like a restaurant kitchen where...").
+4. Conversational Flow: One speaker should build on what the other just said, sometimes asking short clarifying questions, or expressing amazement.
+
 Output MUST be a valid JSON array of dialogue objects. Do not wrap in markdown code blocks like \`\`\`json. Output format details:
 [
   {
@@ -1221,7 +1227,7 @@ router.post('/binders/:binderId/documents/:documentId/translate', async (req, re
             return;
         }
         const systemPrompt = `You are an expert translator. Translate the provided document text completely and accurately into ${targetLanguage}. Maintain the original meaning, structure, formatting, and tone. Output ONLY the translated text without adding any explanations, introductions, or markdown code block wrapper blocks (unless the original text had them).`;
-        const response = await gemini.generateResponse([{ role: 'user', content: doc.content.slice(0, 30000) }], systemPrompt, false);
+        const response = await gemini.generateResponse([{ role: 'user', content: doc.content }], systemPrompt, false);
         // Create a new document in the same binder
         const newDocName = `[Translated to ${targetLanguage}] ${doc.name}`;
         const translatedDoc = await prisma_1.default.document.create({
@@ -1259,7 +1265,7 @@ router.post('/binders/:binderId/gaps', async (req, res) => {
             return;
         }
         const documentsText = binder.documents
-            .map(doc => `[Document: ${doc.name}]\n${doc.content.slice(0, 15000)}`) // limit size to keep context fast and robust
+            .map(doc => `[Document: ${doc.name}]\n${doc.content}`)
             .join('\n\n');
         const systemPrompt = `
 You are a StudySphere Conceptual Gap Analyzer.
