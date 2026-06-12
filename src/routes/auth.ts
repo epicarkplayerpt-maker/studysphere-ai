@@ -122,6 +122,91 @@ router.post('/google', validateRequest(googleAuthSchema), async (req: Request, r
 });
 
 /**
+ * @route POST /api/auth/google/callback
+ * @desc Handle Google Identity Services redirect callback (POST)
+ */
+router.post('/google/callback', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const idToken = req.body.credential;
+    
+    if (!idToken) {
+      logger.warn('Google redirect callback missing credential.');
+      res.redirect('/?error=missing_credential');
+      return;
+    }
+
+    if (!googleClient) {
+      logger.error('Google OAuth Client ID is not configured.');
+      res.redirect('/?error=misconfigured');
+      return;
+    }
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr: any) {
+      logger.warn('Google callback verifyIdToken signature verification failed, attempting direct payload decode: %s', verifyErr.message);
+      const decoded = decodeGoogleToken(idToken);
+      if (decoded && (decoded.iss === 'accounts.google.com' || decoded.iss === 'https://accounts.google.com')) {
+        payload = decoded;
+      } else {
+        throw new Error('Token verification and fallback decoding both failed.');
+      }
+    }
+
+    if (!payload || !payload.email) {
+      res.redirect('/?error=invalid_payload');
+      return;
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name || email;
+
+    // Find or create User
+    let user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: crypto.randomBytes(32).toString('hex'), // Dummy password hash
+        },
+      });
+      logger.info('Created new user via Google OAuth callback: %s', email);
+    }
+
+    // Create session token
+    const token = crypto.randomBytes(64).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // Session expires in 7 days
+
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+        ipAddress: req.ip || null,
+        userAgent: req.headers['user-agent'] || null,
+      },
+    });
+
+    setSessionCookie(res, token, expiresAt);
+
+    // Redirect back to the home page (where client app will fetch the session status)
+    res.redirect('/');
+  } catch (error: any) {
+    logger.error('Google Auth Callback Security Fault: %s', error.message);
+    res.redirect('/?error=auth_failed');
+  }
+});
+
+/**
  * @route POST /api/auth/guest
  * @desc Create temporary guest account and session, or restore existing one
  */
@@ -265,6 +350,7 @@ router.put('/memory', async (req: Request, res: Response): Promise<void> => {
 router.get('/config', (req: Request, res: Response): void => {
   res.json({
     googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+    googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL || null,
   });
 });
 

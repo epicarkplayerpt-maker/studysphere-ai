@@ -3,7 +3,7 @@ import prisma from '../lib/prisma';
 import logger from '../lib/logger';
 import { GeminiService } from '../services/gemini';
 import { checkAuthRequired } from '../middleware/auth';
-import { searchWeb } from '../lib/search';
+import { searchWeb, fetchPageContent } from '../lib/search';
 import { recordTokenUsage } from './study';
 
 const router = Router();
@@ -79,24 +79,87 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
 
     // 1. Web Search Phase (if enabled)
     let webSearchContextText = '';
+    let scrapedPageContextText = '';
     if (webSearch) {
-      res.write(`data: ${JSON.stringify({ thought: `Searching the web for: "${userQuery}"...` })}\n\n`);
-      const searchResults = await searchWeb(userQuery);
-      if (searchResults && searchResults.length > 0) {
-        const domains = [...new Set(searchResults.map(r => {
+      res.write(`data: ${JSON.stringify({ thought: `Optimizing search queries for: "${userQuery}"...` })}\n\n`);
+      
+      let searchQueries = [userQuery];
+      try {
+        const optimizationPrompt = `
+You are a web search query optimizer for a study assistant.
+The user is asking a question in a study chat.
+Extract the core factual/informational question or topics that need a web search, and rewrite it as 1 or 2 concise search engine queries (like you would type into Google or DuckDuckGo).
+Do not search for local binder files, local context, or file-specific references. Only extract what needs to be looked up on the public internet.
+
+User Message: "${userQuery}"
+
+Output only the raw search query terms, one per line. Do not include markdown code blocks, quotes, numbering, or introductory text.
+        `.trim();
+        
+        const response = await gemini.generateResponse([
+          { role: 'user', content: optimizationPrompt }
+        ]);
+        const lines = response.text.split('\n').map(q => q.trim()).filter(q => q.length > 0);
+        if (lines.length > 0) {
+          searchQueries = lines;
+        }
+      } catch (optErr) {
+        logger.warn('Failed to optimize search query: %s', optErr);
+      }
+
+      res.write(`data: ${JSON.stringify({ thought: `Searching web sources for: ${searchQueries.join(', ')}...` })}\n\n`);
+      
+      const allResults: any[] = [];
+      const seenUrls = new Set<string>();
+
+      for (const query of searchQueries) {
+        const queryResults = await searchWeb(query);
+        for (const r of queryResults) {
+          if (!seenUrls.has(r.url)) {
+            seenUrls.add(r.url);
+            allResults.push(r);
+          }
+        }
+      }
+
+      const finalSearchResults = allResults.slice(0, 24);
+
+      if (finalSearchResults && finalSearchResults.length > 0) {
+        const domains = [...new Set(finalSearchResults.map(r => {
           try {
             return new URL(r.url).hostname.replace('www.', '');
           } catch (e) {
             return 'web';
           }
         }))].join(', ');
-        res.write(`data: ${JSON.stringify({ thought: `Retrieved ${searchResults.length} search results from: ${domains}.` })}\n\n`);
+        res.write(`data: ${JSON.stringify({ thought: `Retrieved ${finalSearchResults.length} search results from: ${domains}.` })}\n\n`);
         
-        webSearchContextText = searchResults
+        webSearchContextText = finalSearchResults
           .map((res, idx) => `[Result #${idx + 1}]\nTitle: ${res.title}\nURL: ${res.url}\nExcerpt: ${res.snippet}`)
           .join('\n\n');
+
+        // Parallel Scrape top 4 pages
+        res.write(`data: ${JSON.stringify({ thought: `Retrieving detailed web contents from top sources...` })}\n\n`);
+        const topResultsToScrape = finalSearchResults.slice(0, 4);
+        const scrapedPages = await Promise.all(
+          topResultsToScrape.map(async (r, idx) => {
+            const content = await fetchPageContent(r.url);
+            return {
+              index: idx + 1,
+              title: r.title,
+              url: r.url,
+              content: content || 'Failed to retrieve page text.'
+            };
+          })
+        );
+
+        if (scrapedPages.length > 0) {
+          scrapedPageContextText = scrapedPages
+            .map(p => `[Source #${p.index}]\nTitle: ${p.title}\nURL: ${p.url}\nContent:\n${p.content}`)
+            .join('\n\n');
+        }
           
-        systemInstruction += `\n\nYou have access to exactly ${searchResults.length} relevant web search results below under <web_search_results>. Integrate this information in your response. Cite the title and provide URL links where helpful. When answering, state the actual number of sources (${searchResults.length}) you analyzed for this response.`;
+        systemInstruction += `\n\nYou have access to exactly ${finalSearchResults.length} relevant web search results below under <web_search_results> and detailed scraped page text under <scraped_page_contents>. Integrate this information in your response. Cite the title and provide URL links where helpful. When answering, state the actual number of sources (${finalSearchResults.length}) you analyzed for this response.`;
       } else {
         res.write(`data: ${JSON.stringify({ thought: 'Web search returned no results. Relying on default knowledge.' })}\n\n`);
       }
@@ -116,35 +179,69 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
         binderDocs = binder.documents;
         
         let hasSemanticResults = false;
-        try {
-          res.write(`data: ${JSON.stringify({ thought: 'Running semantic pgvector search across documents...' })}\n\n`);
-          const queryEmbedding = await gemini.getEmbedding(userQuery);
-          const vectorStr = `[${queryEmbedding.join(',')}]`;
+        
+        // 1. Check if user explicitly asked for / mentioned specific document(s) by name
+        const mentionedDocs: any[] = [];
+        for (const doc of binderDocs) {
+          const docNameLower = doc.name.toLowerCase();
+          const docNameNoExt = docNameLower.replace(/\.[^/.]+$/, '');
+          const queryLower = userQuery.toLowerCase();
           
-          const relevantChunks = await prisma.$queryRawUnsafe<any[]>(
-            `SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
-             FROM "DocumentChunk" dc
-             JOIN "Document" d ON dc."documentId" = d.id
-             WHERE d."binderId" = $2
-             ORDER BY dc.embedding <=> $1::vector
-             LIMIT $3`,
-            vectorStr,
-            binderId,
-            6
-          );
-
-          if (relevantChunks && relevantChunks.length > 0) {
-            hasSemanticResults = true;
-            res.write(`data: ${JSON.stringify({ thought: `Extracted ${relevantChunks.length} relevant sections from files.` })}\n\n`);
-            binderContextText = relevantChunks
-              .map(rc => `<document filename="${rc.documentName}">\n${rc.content}\n</document>`)
-              .join('\n\n');
-          } else {
-            res.write(`data: ${JSON.stringify({ thought: 'No highly matching sections found in binder documents. Initializing text fallback...' })}\n\n`);
+          if (queryLower.includes(docNameLower) || (docNameNoExt.length > 2 && queryLower.includes(docNameNoExt))) {
+            mentionedDocs.push(doc);
           }
-        } catch (ragErr: any) {
-          logger.error('RAG semantic search error: %s', ragErr);
-          res.write(`data: ${JSON.stringify({ thought: 'Semantic search failed. Initializing text fallback...' })}\n\n`);
+        }
+
+        if (mentionedDocs.length > 0) {
+          res.write(`data: ${JSON.stringify({ thought: `User query explicitly referenced document(s): ${mentionedDocs.map(d => d.name).join(', ')}. Loading full document text...` })}\n\n`);
+          let forceText = '';
+          for (const doc of mentionedDocs) {
+            if (doc.content) {
+              const docSnippet = doc.content.substring(0, 150000);
+              forceText += `<document filename="${doc.name}">\n${docSnippet}\n</document>\n\n`;
+            }
+          }
+          if (forceText) {
+            binderContextText = forceText.trim();
+            hasSemanticResults = true; // skip semantic search and avoid fallback override
+          }
+        }
+
+        // 2. Run semantic search if no explicit documents were mentioned
+        if (!hasSemanticResults) {
+          try {
+            res.write(`data: ${JSON.stringify({ thought: 'Running semantic pgvector search across documents...' })}\n\n`);
+            const queryEmbedding = await gemini.getEmbedding(userQuery);
+            const vectorStr = `[${queryEmbedding.join(',')}]`;
+            
+            const relevantChunks = await prisma.$queryRawUnsafe<any[]>(
+              `SELECT dc.content, d.name as "documentName", 1 - (dc.embedding <=> $1::vector) as similarity
+               FROM "DocumentChunk" dc
+               JOIN "Document" d ON dc."documentId" = d.id
+               WHERE d."binderId" = $2
+               ORDER BY dc.embedding <=> $1::vector
+               LIMIT $3`,
+              vectorStr,
+              binderId,
+              6
+            );
+
+            // Filter by similarity threshold to avoid loading low-quality/irrelevant chunks
+            const matchingChunks = (relevantChunks || []).filter(rc => rc.similarity >= 0.35);
+
+            if (matchingChunks && matchingChunks.length > 0) {
+              hasSemanticResults = true;
+              res.write(`data: ${JSON.stringify({ thought: `Extracted ${matchingChunks.length} relevant sections from files.` })}\n\n`);
+              binderContextText = matchingChunks
+                .map(rc => `<document filename="${rc.documentName}">\n${rc.content}\n</document>`)
+                .join('\n\n');
+            } else {
+              res.write(`data: ${JSON.stringify({ thought: 'No highly matching sections found in binder documents. Initializing text fallback...' })}\n\n`);
+            }
+          } catch (ragErr: any) {
+            logger.error('RAG semantic search error: %s', ragErr);
+            res.write(`data: ${JSON.stringify({ thought: 'Semantic search failed. Initializing text fallback...' })}\n\n`);
+          }
         }
 
         // Robust Fallback: load text content directly if pgvector has zero chunks or fails
@@ -174,6 +271,9 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
     let combinedContext = '';
     if (webSearchContextText) {
       combinedContext += `<web_search_results>\n${webSearchContextText}\n</web_search_results>\n\n`;
+    }
+    if (scrapedPageContextText) {
+      combinedContext += `<scraped_page_contents>\n${scrapedPageContextText}\n</scraped_page_contents>\n\n`;
     }
     if (binderContextText) {
       combinedContext += `<document_context>\n${binderContextText}\n</document_context>\n\n`;

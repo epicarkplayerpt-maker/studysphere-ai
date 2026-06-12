@@ -237,8 +237,8 @@ export const MockExamEngine: React.FC<MockExamEngineProps> = ({ initialBinderId,
                         key={opt}
                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer text-xs font-medium transition ${
                           userAnswers[q.id] === opt
-                            ? 'bg-primary/10 border-primary text-foreground'
-                            : 'bg-input border-border text-muted hover:bg-secondary hover:text-foreground'
+                            ? 'bg-primary/5 border-zinc-600 text-foreground shadow-sm'
+                            : 'bg-input border-border text-muted hover:bg-secondary hover:text-foreground hover:border-zinc-700'
                         }`}
                       >
                         <input
@@ -260,7 +260,9 @@ export const MockExamEngine: React.FC<MockExamEngineProps> = ({ initialBinderId,
                       onChange={(e) => handleAnswerChange(q.id, e.target.value)}
                       placeholder={q.type === 'code' ? 'Write code solution here...' : 'Explain the concept...'}
                       rows={q.type === 'code' ? 6 : 4}
-                      className="w-full bg-input border border-border rounded-lg p-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                      className={`w-full bg-input border border-border rounded-lg p-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary ${
+                        q.type === 'code' ? 'font-mono' : 'font-sans'
+                      }`}
                     />
                   </div>
                 )}

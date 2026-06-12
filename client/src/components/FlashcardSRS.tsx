@@ -262,7 +262,7 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) =>
             <div className={`w-full h-full relative transition-transform duration-500 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
               
               {/* Front Side */}
-              <div className="absolute inset-0 w-full h-full backface-hidden glass-panel rounded-2xl flex flex-col justify-between p-8 hover:border-accent transition-all">
+              <div className="absolute inset-0 w-full h-full backface-hidden bg-secondary border border-border rounded-2xl flex flex-col justify-between p-8 hover:border-zinc-700 transition-all shadow-xl">
                 <span className="text-xs font-semibold text-primary uppercase tracking-wider">Prompt / Question</span>
                 <div className="flex-1 flex items-center justify-center text-center">
                   <p className="text-lg md:text-xl font-medium text-foreground leading-relaxed whitespace-pre-wrap">{currentCard.front}</p>
@@ -274,8 +274,8 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) =>
               </div>
 
               {/* Back Side */}
-              <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-secondary border border-border rounded-2xl flex flex-col justify-between p-8 shadow-2xl transition-all">
-                <span className="text-xs font-semibold text-accent uppercase tracking-wider">Solution / Details</span>
+              <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-secondary border border-border rounded-2xl flex flex-col justify-between p-8 hover:border-zinc-700 shadow-xl transition-all">
+                <span className="text-xs font-semibold text-primary uppercase tracking-wider">Solution / Details</span>
                 <div className="flex-1 flex items-center justify-center text-center">
                   <p className="text-lg md:text-xl font-medium text-foreground leading-relaxed whitespace-pre-wrap">{currentCard.back}</p>
                 </div>
@@ -287,16 +287,16 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) =>
 
           {/* Spaced Repetition Quality Selectors (Visible when card is revealed) */}
           {isFlipped && (
-            <div className="bg-secondary border border-border p-4 rounded-2xl space-y-3">
+            <div className="bg-secondary border border-border p-4 rounded-2xl space-y-3 shadow-lg">
               <p className="text-center text-xs text-muted font-semibold">How accurately did you recall the solution?</p>
               <div className="grid grid-cols-6 gap-2">
                 {[
-                  { score: 0, label: 'Forgot', color: 'hover:bg-red-950/40 hover:text-red-400' },
-                  { score: 1, label: 'Bad', color: 'hover:bg-orange-950/40 hover:text-orange-400' },
-                  { score: 2, label: 'Hard', color: 'hover:bg-yellow-950/40 hover:text-yellow-400' },
-                  { score: 3, label: 'Good', color: 'hover:bg-emerald-950/40 hover:text-emerald-400' },
-                  { score: 4, label: 'Easy', color: 'hover:bg-indigo-950/40 hover:text-indigo-400' },
-                  { score: 5, label: 'Perfect', color: 'hover:bg-amber-950/40 hover:text-amber-400' },
+                  { score: 0, label: 'Forgot', color: 'hover:bg-zinc-800/40 hover:text-red-400' },
+                  { score: 1, label: 'Bad', color: 'hover:bg-zinc-800/40 hover:text-orange-400' },
+                  { score: 2, label: 'Hard', color: 'hover:bg-zinc-800/40 hover:text-yellow-400' },
+                  { score: 3, label: 'Good', color: 'hover:bg-zinc-800/40 hover:text-emerald-400' },
+                  { score: 4, label: 'Easy', color: 'hover:bg-zinc-800/40 hover:text-sky-400' },
+                  { score: 5, label: 'Perfect', color: 'hover:bg-zinc-800/40 hover:text-indigo-400' },
                 ].map((option) => (
                   <button
                     key={option.score}
@@ -304,7 +304,7 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) =>
                       handleGrade(option.score);
                       playSoundEffect('click');
                     }}
-                    className={`flex flex-col items-center justify-center py-2 px-1 bg-input border border-border rounded-xl transition text-foreground font-semibold ${option.color} hover:border-accent`}
+                    className={`flex flex-col items-center justify-center py-2 px-1 bg-input border border-border rounded-xl transition text-foreground font-semibold ${option.color} hover:border-zinc-700`}
                   >
                     <span className="text-sm">{option.score}</span>
                     <span className="text-[10px] mt-0.5 text-muted font-normal">{option.label}</span>

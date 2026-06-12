@@ -132,24 +132,10 @@ interface PodcastTurn {
 const StudySphereLogo = ({ size = 'medium' }: { size?: 'small' | 'medium' | 'large' }) => {
   const dim = size === 'small' ? 'h-8 w-8' : size === 'medium' ? 'h-12 w-12' : 'h-24 w-24';
   return (
-    <div className={`relative ${dim} flex items-center justify-center select-none transform transition-transform hover:scale-105 duration-300`}>
-      <svg className="w-full h-full text-indigo-500" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#8b5cf6" />
-            <stop offset="50%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#3b82f6" />
-          </linearGradient>
-        </defs>
-        <circle cx="50" cy="50" r="35" fill="url(#logoGlow)" className="animate-pulse" style={{ transformOrigin: 'center' }} />
-        <circle cx="50" cy="50" r="16" fill="url(#logoGrad)" />
-        <ellipse cx="50" cy="50" rx="36" ry="11" stroke="url(#logoGrad)" strokeWidth="3" transform="rotate(-30 50 50)" strokeDasharray="120" className="animate-spin" style={{ animationDuration: '8s', transformOrigin: 'center' }} />
-        <ellipse cx="50" cy="50" rx="36" ry="11" stroke="url(#logoGrad)" strokeWidth="2" transform="rotate(45 50 50)" strokeDasharray="180" className="animate-spin" style={{ animationDuration: '12s', transformOrigin: 'center', animationDirection: 'reverse' }} />
-        <circle cx="50" cy="50" r="5" fill="#ffffff" />
+    <div className={`relative ${dim} flex items-center justify-center select-none`}>
+      <svg className="w-full h-full text-foreground/90" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="25" y="25" width="50" height="50" rx="12" stroke="currentColor" strokeWidth="6" className="opacity-90" />
+        <path d="M40 37 L60 37 M40 50 L60 50 M40 63 L52 63" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
       </svg>
     </div>
   );
@@ -412,7 +398,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
       <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:justify-between border-b border-border pb-4 bg-input/10 p-4 rounded-2xl">
         <div>
           <h2 className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-primary via-accent to-pink-500 bg-clip-text text-transparent flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary animate-pulse" />
+            <TrendingUp className="h-5 w-5 text-primary" />
             Project Zenith Workspace Intelligence
           </h2>
           <p className="text-[11px] text-muted">
@@ -421,7 +407,6 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
         </div>
         <div className="flex items-center gap-2 mt-2 md:mt-0">
           <span className="flex h-2.5 w-2.5 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
           </span>
           <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest bg-emerald-950/20 border border-emerald-900/35 px-2.5 py-1 rounded-full">
@@ -638,7 +623,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
         <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-border/40 pb-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-primary/10 rounded-xl">
-              <Sparkles className="h-4 w-4 text-primary animate-spin" style={{ animationDuration: '4s' }} />
+              <Sparkles className="h-4 w-4 text-primary" />
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -768,6 +753,7 @@ export default function App() {
   ];
 
   const [googleClientId, setGoogleClientId] = useState<string | null | undefined>(undefined);
+  const [googleCallbackUrl, setGoogleCallbackUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -776,12 +762,15 @@ export default function App() {
         if (res.ok) {
           const data = await safeParseJson(res);
           setGoogleClientId(data.googleClientId || null);
+          setGoogleCallbackUrl(data.googleCallbackUrl || null);
         } else {
           setGoogleClientId(null);
+          setGoogleCallbackUrl(null);
         }
       } catch (err) {
         console.error('Failed to load auth config:', err);
         setGoogleClientId(null);
+        setGoogleCallbackUrl(null);
       }
     };
     fetchConfig();
@@ -1187,6 +1176,24 @@ export default function App() {
 
   // 1. Session Verification on Mount
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    if (oauthError) {
+      // Clean up the URL query params so they don't persist in the address bar
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      
+      if (oauthError === 'auth_failed') {
+        showToast('Google Sign-In failed. Please try again.', 'error');
+      } else if (oauthError === 'missing_credential') {
+        showToast('Google credentials missing. Please try again.', 'error');
+      } else if (oauthError === 'misconfigured') {
+        showToast('Google auth is misconfigured on the server.', 'error');
+      } else {
+        showToast(`Google login error: ${oauthError}`, 'error');
+      }
+    }
+
     const checkSession = async () => {
       try {
         const res = await fetch('/api/auth/me', { credentials: 'include' });
@@ -1311,37 +1318,43 @@ export default function App() {
     window.speechSynthesis.cancel();
   }, [selectedBinderId]);
 
-  // Google Login Callback
-  const handleGoogleLogin = async (response: any) => {
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ idToken: response.credential }),
-      });
-      if (res.ok) {
-        const data = await safeParseJson(res, 'Failed to parse user session.');
-        setUser(data.user);
-        playSoundEffect('success');
-      } else {
-        showToast('Google Sign-In failed.', 'error');
-      }
-    } catch (err) {
-      console.error('Google Sign-In Error:', err);
-    }
-  };
+
 
   // Render Google Button on sign-in screen
   useEffect(() => {
     if (user || authChecking || googleClientId === undefined) return;
+
+    const handleGoogleCredentialResponse = async (response: any) => {
+      try {
+        setAuthChecking(true);
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: response.credential }),
+        });
+        if (res.ok) {
+          const data = await safeParseJson(res, 'Google login response parsing failed.');
+          setUser(data.user);
+          showToast('Successfully signed in with Google!', 'success');
+        } else {
+          const data = await res.json().catch(() => ({}));
+          showToast(data.error || 'Google login failed.', 'error');
+        }
+      } catch (err) {
+        console.error('Google Sign-in error:', err);
+        showToast('An error occurred during Google Sign-in.', 'error');
+      } finally {
+        setAuthChecking(false);
+      }
+    };
+
     const initializeGoogleBtn = () => {
       if ((window as any).google) {
         if (!(window as any).__google_gsi_initialized) {
           (window as any).google.accounts.id.initialize({
             client_id: googleClientId || '779960370065-orcbqonmg0irnqivbcemhpbp73k0k93g.apps.googleusercontent.com',
-            callback: handleGoogleLogin,
             ux_mode: 'popup',
+            callback: handleGoogleCredentialResponse,
           });
           (window as any).__google_gsi_initialized = true;
         }
@@ -1368,7 +1381,7 @@ export default function App() {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [user, authChecking, theme, googleClientId]);
+  }, [user, authChecking, theme, googleClientId, googleCallbackUrl]);
 
   // Guest Session Trigger (Hoisted function declaration to prevent temporal dead zone)
   async function handleGuestLogin(storedGuestId?: string) {
@@ -2213,7 +2226,7 @@ export default function App() {
           <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <Headphones className="h-5 w-5 text-accent animate-pulse" />
+                <Headphones className="h-5 w-5 text-accent" />
                 <h3 className="text-base font-bold text-foreground font-sans">Audio Study Review</h3>
               </div>
               <button
@@ -2233,15 +2246,29 @@ export default function App() {
               </div>
             ) : podcastTurns.length > 0 ? (
               <div className="space-y-4">
-                <div className="flex flex-col items-center justify-center p-4 bg-secondary/60 border border-border rounded-xl space-y-3 shadow-md">
-                  <div className="relative w-24 h-24 bg-input border border-border rounded-full flex items-center justify-center shadow-inner">
-                    <div className={`w-20 h-20 border border-dashed border-primary/45 rounded-full flex items-center justify-center ${podcastPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '8s' }}>
-                      <div className="w-8 h-8 bg-secondary border border-border rounded-full"></div>
+                <div className="flex flex-col p-4 bg-secondary/60 border border-border rounded-xl space-y-4 shadow-md">
+                  <div className="w-full flex items-center justify-between p-3.5 bg-input/50 border border-border rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2.5 rounded-lg border ${podcastPlaying ? 'bg-primary/15 border-primary/25 text-primary' : 'bg-secondary border-border text-muted-foreground'}`}>
+                        <Headphones className="h-4.5 w-4.5" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-[11px] font-bold text-foreground block">Alex & Taylor Briefing</span>
+                        <span className="text-[9.5px] text-muted block">
+                          {podcastPlaying ? 'Playing Audio Review' : 'Audio Review Paused'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="absolute text-[8px] font-bold text-foreground">Alex & Taylor</span>
+                    {podcastPlaying && (
+                      <div className="flex items-center gap-0.5 h-3">
+                        <span className="w-0.5 h-full bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.6s' }}></span>
+                        <span className="w-0.5 h-3/4 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.8s' }}></span>
+                        <span className="w-0.5 h-1/2 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center gap-4">
                     {podcastPlaying ? (
                       <button
                         onClick={pausePodcastPlayback}
@@ -2639,11 +2666,11 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#0d0d0e] flex flex-col justify-center items-center relative overflow-hidden font-sans">
         {/* Apple-style soft blurred ambient lights */}
-        <div className="absolute top-[35%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-indigo-500/10 rounded-full blur-[140px] pointer-events-none animate-pulse-slow"></div>
+        <div className="absolute top-[35%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-indigo-500/10 rounded-full blur-[140px] pointer-events-none"></div>
         
         {/* Glowing Logo */}
         <div className="relative mb-6 flex items-center justify-center">
-          <div className="absolute inset-0 bg-indigo-500/15 rounded-3xl blur-2xl animate-pulse animate-pulse-slow"></div>
+          <div className="absolute inset-0 bg-indigo-500/15 rounded-3xl blur-2xl"></div>
           <StudySphereLogo size="large" />
         </div>
 
@@ -2751,7 +2778,7 @@ export default function App() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[100px] pointer-events-none"></div>
           
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary border border-border text-xs text-primary font-medium">
-            <Zap className="h-3.5 w-3.5 text-accent animate-pulse" />
+            <Zap className="h-3.5 w-3.5 text-accent" />
             <span>Powered by Zenith AI Streaming</span>
           </div>
 
@@ -2893,10 +2920,10 @@ export default function App() {
                     <span className="text-[9px] px-2 py-0.5 bg-input border border-border rounded text-muted">CS_Algorithm_Data.pdf</span>
                   </div>
                   <div className="p-4 border-2 border-dashed border-border bg-input/40 rounded-xl text-center space-y-2 relative">
-                    <Upload className="h-6 w-6 text-primary mx-auto animate-bounce" />
+                    <Upload className="h-6 w-6 text-primary mx-auto" />
                     <p className="text-xs font-semibold text-foreground">File upload complete (1.4 MB)</p>
                     <div className="w-1/2 mx-auto bg-input h-1 rounded-full overflow-hidden">
-                      <div className="bg-primary h-full rounded-full animate-pulse" style={{ width: '100%' }} />
+                      <div className="bg-primary h-full rounded-full" style={{ width: '100%' }} />
                     </div>
                     <span className="text-[9px] text-muted block">Parsed 4 semantic sections, 1,280 tokens extracted</span>
                   </div>
@@ -3191,7 +3218,7 @@ export default function App() {
 
           <button
             onClick={() => { setShowMemoryModal(true); playSoundEffect('click'); }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-accent border border-border/45 rounded-xl text-xs font-semibold animate-pulse-slow transition transform hover:scale-105 active:scale-95 duration-200"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-accent border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
             title="Configure Personal AI Memory"
           >
             <Brain className="h-4 w-4 text-accent" />
@@ -3347,7 +3374,7 @@ export default function App() {
                       : `border-border hover:border-muted-foreground/40 bg-input/20 ${tourStep === 3 ? 'tour-pulse-active border-primary relative z-[9992] bg-secondary' : ''}`
                   }`}
                 >
-                  <Upload className="h-5 w-5 text-muted animate-pulse" />
+                  <Upload className="h-5 w-5 text-muted" />
                   <span className="text-[10.5px] font-semibold text-foreground">Drag & drop context files here</span>
                   <label className="text-[9.5px] px-2.5 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg cursor-pointer transition">
                     Browse Files
