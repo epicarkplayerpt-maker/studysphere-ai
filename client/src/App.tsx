@@ -3062,16 +3062,24 @@ export default function App() {
                 <span>Go to Workspace</span>
               </button>
             ) : (
-              <button
-                onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
-                className="w-full max-w-[280px] py-3.5 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-sm font-extrabold rounded-xl transition duration-300 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
-              >
-                <Zap className="h-4 w-4" />
-                <span>Start Studying Free</span>
-              </button>
+              <div className="w-full flex flex-col items-center gap-3.5">
+                <div id="google-btn-container" className="min-h-[40px] flex items-center justify-center"></div>
+                <div className="flex items-center gap-2.5 w-full max-w-[280px] select-none">
+                  <div className="h-[1.5px] bg-border/40 flex-1"></div>
+                  <span className="text-[9px] text-muted font-extrabold uppercase tracking-widest">or</span>
+                  <div className="h-[1.5px] bg-border/40 flex-1"></div>
+                </div>
+                <button
+                  onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+                  className="w-full max-w-[280px] py-3 bg-secondary hover:bg-input text-foreground border border-border/60 hover:border-border text-xs font-bold rounded-xl transition duration-200 flex items-center justify-center gap-2 active:scale-95 transform hover:scale-[1.02]"
+                >
+                  <Zap className="h-3.5 w-3.5 text-accent" />
+                  <span>Start Studying Free (Guest)</span>
+                </button>
+              </div>
             )}
             <p className="text-[10px] text-muted">
-              No registration required. Sync across devices using Google login in the top-right.
+              Sync across devices using secure Google login or proceed instantly as a guest.
             </p>
           </div>
 
