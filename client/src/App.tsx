@@ -1178,12 +1178,12 @@ export default function App() {
   }, [tourStep]);
 
   const getTourCardPosition = () => {
-    if (tourStep === 1) return 'lg:fixed lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 fixed bottom-20 left-4 right-4 z-[9999]';
-    if (tourStep === 2) return 'lg:fixed lg:top-28 lg:left-[19rem] fixed bottom-20 left-4 right-4 z-[9999]';
-    if (tourStep === 3) return 'lg:fixed lg:bottom-28 lg:left-[19rem] fixed bottom-20 left-4 right-4 z-[9999]';
-    if (tourStep === 4) return 'lg:fixed lg:top-20 lg:left-1/2 lg:-translate-x-1/2 fixed bottom-20 left-4 right-4 z-[9999]';
-    if (tourStep === 5) return 'lg:fixed lg:top-1/3 lg:left-1/2 lg:-translate-x-1/2 fixed bottom-20 left-4 right-4 z-[9999]';
-    if (tourStep === 6) return 'lg:fixed lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 fixed bottom-20 left-4 right-4 z-[9999]';
+    if (tourStep === 1) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:-translate-x-1/2 lg:top-1/2 lg:left-1/2 z-[9999]';
+    if (tourStep === 2) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:translate-y-0 lg:translate-x-0 lg:top-28 lg:left-[19rem] z-[9999]';
+    if (tourStep === 3) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:translate-y-0 lg:translate-x-0 lg:bottom-28 lg:left-[19rem] lg:top-auto z-[9999]';
+    if (tourStep === 4) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:translate-y-0 lg:-translate-x-1/2 lg:top-20 lg:left-1/2 z-[9999]';
+    if (tourStep === 5) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:translate-y-0 lg:-translate-x-1/2 lg:top-1/3 lg:left-1/2 z-[9999]';
+    if (tourStep === 6) return 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] lg:max-w-sm lg:-translate-x-1/2 lg:top-1/2 lg:left-1/2 z-[9999]';
     return 'fixed bottom-6 right-6 z-[9999]';
   };
 
@@ -3545,7 +3545,9 @@ export default function App() {
         {/* ======================================================== */}
         {/* COLUMN 1: LEFT SIDEBAR (Binders, Dropzone, SRS navigation) */}
         {/* ======================================================== */}
-        <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-secondary border-r border-border flex flex-col transform transition-all duration-300 ease-out lg:relative lg:translate-x-0 ${sidebarOpen ? 'translate-x-0 lg:w-72 lg:border-r' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:border-r-0 lg:overflow-hidden'}`}>
+        <aside className={`fixed inset-y-0 left-0 w-72 bg-secondary border-r border-border flex flex-col transform transition-all duration-300 ease-out lg:relative lg:translate-x-0 ${
+          (tourStep === 2 || tourStep === 3) ? 'z-[9991] translate-x-0' : 'z-50'
+        } ${sidebarOpen ? 'translate-x-0 lg:w-72 lg:border-r' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:border-r-0 lg:overflow-hidden'}`}>
           
           {/* Binders Folder Header */}
           <div className="p-3 border-b border-border flex justify-between items-center flex-shrink-0 bg-input/20">
@@ -4147,7 +4149,9 @@ export default function App() {
         {/* ======================================================== */}
         {/* COLUMN 3: RIGHT SIDEBAR (Stats, Gaps, History, Viewer)  */}
         {/* ======================================================== */}
-        <aside className={`fixed inset-y-0 right-0 z-50 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${rightSidebarOpen ? 'translate-x-0 lg:w-[460px] lg:border-l' : 'translate-x-full lg:translate-x-0 lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
+        <aside className={`fixed inset-y-0 right-0 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${
+          tourStep === 4 ? 'z-[9991] translate-x-0' : 'z-50'
+        } ${rightSidebarOpen ? 'translate-x-0 lg:w-[460px] lg:border-l' : 'translate-x-full lg:translate-x-0 lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
           
           {/* Header tabs toggle */}
           <div className="border-b border-border bg-input/20 flex items-center justify-between flex-shrink-0 pr-2">
@@ -4549,7 +4553,7 @@ export default function App() {
 
       {/* Guided Tour Tooltip Dialog Box Overlay */}
       {tourStep !== null && (
-        <div className={`${getTourCardPosition()} max-w-sm w-full bg-secondary border border-primary p-5 rounded-2xl shadow-2xl animate-fade-in-up space-y-3 z-[9995]`}>
+        <div className={`${getTourCardPosition()} bg-secondary border border-primary p-5 rounded-2xl shadow-2xl animate-fade-in-up space-y-3 z-[9995]`}>
           <div className="flex justify-between items-center border-b border-border pb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
               <GraduationCap className="h-4 w-4 text-accent" />
