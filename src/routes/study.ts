@@ -755,6 +755,89 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
 // 4. Interactive Spaced Repetition (SRS)
 // ==========================================
 
+router.post('/binders/:binderId/flashcards/generate', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const binderId = req.params.binderId as string;
+    const userId = req.user!.userId;
+
+    const binder = await prisma.binder.findFirst({
+      where: { id: binderId, userId },
+      include: { documents: true }
+    });
+
+    if (!binder) {
+      res.status(404).json({ error: 'Binder not found or unauthorized.' });
+      return;
+    }
+
+    if (binder.documents.length === 0) {
+      res.status(400).json({ error: 'No documents in this binder. Please upload files first.' });
+      return;
+    }
+
+    const documentsText = binder.documents
+      .map(doc => `[Doc: ${doc.name}]\n${doc.content.slice(0, 15000)}`)
+      .join('\n\n');
+
+    const systemPrompt = `
+You are a StudySphere Flashcard Generator.
+Analyze the provided study documents and generate 6-10 high-quality flashcards following the spaced repetition format.
+Each flashcard must have a "front" (a clear, direct question, concept prompt, or fill-in-the-blank) and a "back" (a brief, accurate answer or explanation, maximum 2 sentences).
+
+Your output MUST be a valid JSON array of flashcard objects:
+[
+  {
+    "front": "Question details here...",
+    "back": "Answer details here..."
+  }
+]
+
+Strictly return ONLY the raw JSON array. Do not wrap it in markdown code blocks.
+    `.trim();
+
+    const response = await gemini.generateResponse(
+      [{ role: 'user', content: `Analyze the documents and generate a comprehensive set of flashcards:\n\n${documentsText}` }],
+      systemPrompt,
+      true, // responseJson flag to force valid JSON output
+      flashcardsSchema
+    );
+
+    // Record token usage
+    await recordTokenUsage(userId, 'gemini-3.1-flash-lite', response.usage, 'Flashcard Generation');
+
+    let cleanJsonText = response.text.trim();
+    if (cleanJsonText.startsWith('```')) {
+      cleanJsonText = cleanJsonText.replace(/^```(json)?/, '').replace(/```$/, '').trim();
+    }
+
+    const cards = JSON.parse(cleanJsonText);
+    
+    // Save these cards to the database for this user
+    const createdCards = [];
+    for (const card of cards) {
+      if (card.front && card.back) {
+        const savedCard = await prisma.flashcard.create({
+          data: {
+            userId,
+            front: card.front,
+            back: card.back,
+            interval: 0,
+            easeFactor: 2.5,
+            reps: 0,
+            nextReview: new Date(),
+          }
+        });
+        createdCards.push(savedCard);
+      }
+    }
+
+    res.json({ flashcards: createdCards });
+  } catch (error: any) {
+    logger.error('Failed to auto-generate and save flashcards for binder %s: %s', req.params.binderId, error.stack || error.message);
+    res.status(500).json({ error: 'Failed to auto-generate flashcards.' });
+  }
+});
+
 router.post('/flashcards/generate', async (req: Request, res: Response): Promise<void> => {
   try {
     const { text } = req.body;

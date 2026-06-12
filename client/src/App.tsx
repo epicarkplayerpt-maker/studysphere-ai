@@ -696,7 +696,9 @@ interface ArtifactPart {
 
 const parseMessageArtifacts = (content: string): ArtifactPart[] => {
   if (!content) return [{ type: 'text', content: '' }];
-  const regex = /<study-artifact\s+type="([^"]+)"(?:\s+binderId="([^"]*)")?(?:\s+questionCount="([^"]*)")?\s*><\/study-artifact>/gi;
+  
+  // Matches <study-artifact ...> or <study-artifact ...></study-artifact>
+  const regex = /<study-artifact\s+([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/study-artifact>)/gi;
   
   const parts: ArtifactPart[] = [];
   let lastIndex = 0;
@@ -708,11 +710,22 @@ const parseMessageArtifacts = (content: string): ArtifactPart[] => {
       parts.push({ type: 'text', content: content.substring(lastIndex, matchIndex) });
     }
     
+    const attrString = match[1];
+    
+    // Parse attributes from attrString supporting single or double quotes
+    const typeMatch = attrString.match(/type\s*=\s*["']([^"']+)["']/i);
+    const binderIdMatch = attrString.match(/binderId\s*=\s*["']([^"']+)["']/i);
+    const questionCountMatch = attrString.match(/questionCount\s*=\s*["']([^"']+)["']/i);
+    
+    const artifactType = typeMatch ? typeMatch[1] : '';
+    const binderId = binderIdMatch ? binderIdMatch[1] : undefined;
+    const questionCount = questionCountMatch ? parseInt(questionCountMatch[1], 10) : undefined;
+    
     parts.push({
       type: 'artifact',
-      artifactType: match[1],
-      binderId: match[2] || undefined,
-      questionCount: match[3] ? parseInt(match[3], 10) : undefined
+      artifactType,
+      binderId,
+      questionCount
     });
     
     lastIndex = regex.lastIndex;
@@ -724,6 +737,104 @@ const parseMessageArtifacts = (content: string): ArtifactPart[] => {
   
   return parts.length > 0 ? parts : [{ type: 'text', content }];
 };
+
+// Auto-triggering wrapper for Weaknesses Study Artifact
+interface WeaknessArtifactWrapperProps {
+  binderId: string;
+  gapAnalysis: string;
+  documentLoading: boolean;
+  onScan: () => void;
+  renderContent: () => React.ReactNode;
+}
+
+const WeaknessArtifactWrapper: React.FC<WeaknessArtifactWrapperProps> = ({
+  binderId,
+  gapAnalysis,
+  documentLoading,
+  onScan,
+  renderContent
+}) => {
+  useEffect(() => {
+    if (binderId && !gapAnalysis && !documentLoading) {
+      onScan();
+    }
+  }, [binderId, gapAnalysis, documentLoading, onScan]);
+
+  return <>{renderContent()}</>;
+};
+
+// Auto-triggering wrapper for Audio Review Study Artifact
+interface AudioReviewArtifactWrapperProps {
+  binderId: string;
+  podcastTurns: any[];
+  podcastLoading: boolean;
+  onGenerate: () => void;
+  renderContent: () => React.ReactNode;
+}
+
+const AudioReviewArtifactWrapper: React.FC<AudioReviewArtifactWrapperProps> = ({
+  binderId,
+  podcastTurns,
+  podcastLoading,
+  onGenerate,
+  renderContent
+}) => {
+  useEffect(() => {
+    if (binderId && podcastTurns.length === 0 && !podcastLoading) {
+      onGenerate();
+    }
+  }, [binderId, podcastTurns.length, podcastLoading, onGenerate]);
+
+  return <>{renderContent()}</>;
+};
+
+// Dismissable Artifact Container for close / dismiss handles
+interface DismissableArtifactContainerProps {
+  children: React.ReactNode;
+}
+
+const DismissableArtifactContainer: React.FC<DismissableArtifactContainerProps> = ({ children }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  if (!isOpen) return null;
+  return (
+    <div className="relative group">
+      <button 
+        onClick={() => setIsOpen(false)}
+        className="absolute top-4 right-4 p-1.5 rounded-xl bg-secondary/80 border border-border hover:bg-input text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition duration-200 z-10"
+        title="Dismiss Artifact"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      {children}
+    </div>
+  );
+};
+
+// Auto-triggering wrapper for Syllabus Study Artifact
+interface SyllabusArtifactWrapperProps {
+  binderId: string;
+  sourceGuideText: string;
+  sourceGuideLoading: boolean;
+  onGenerate: () => void;
+  renderContent: () => React.ReactNode;
+}
+
+const SyllabusArtifactWrapper: React.FC<SyllabusArtifactWrapperProps> = ({
+  binderId,
+  sourceGuideText,
+  sourceGuideLoading,
+  onGenerate,
+  renderContent
+}) => {
+  useEffect(() => {
+    if (binderId && !sourceGuideText && !sourceGuideLoading) {
+      onGenerate();
+    }
+  }, [binderId, sourceGuideText, sourceGuideLoading, onGenerate]);
+
+  return <>{renderContent()}</>;
+};
+
 
 export default function App() {
   // Theme Toggle State
@@ -754,6 +865,56 @@ export default function App() {
 
   const [googleClientId, setGoogleClientId] = useState<string | null | undefined>(undefined);
   const [googleCallbackUrl, setGoogleCallbackUrl] = useState<string | null>(null);
+
+  // Unified loading screen wrapper for auth operations
+  const performAuthActionWithLoader = async (actionFn: () => Promise<void>) => {
+    const startTime = Date.now();
+    setAuthChecking(true);
+    setLoadingProgress(0);
+    try {
+      await actionFn();
+    } catch (err) {
+      console.error('Auth action execution failed:', err);
+    } finally {
+      const elapsed = Date.now() - startTime;
+      const minDuration = 1500;
+      const remaining = Math.max(0, minDuration - elapsed);
+      setTimeout(() => {
+        setLoadingProgress(100);
+        setTimeout(() => {
+          setAuthChecking(false);
+        }, 200);
+      }, remaining);
+    }
+  };
+
+  // Internal guest login executor without loader wrapper
+  const executeGuestLogin = async (storedGuestId?: string) => {
+    try {
+      const res = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ guestUserId: storedGuestId })
+      });
+      if (res.ok) {
+        const data = await safeParseJson(res, 'Failed to parse guest session.');
+        setUser(data.user);
+        localStorage.setItem('studysphere_guest_user_id', data.user.userId);
+        playSoundEffect('success');
+      }
+    } catch (err) {
+      console.error('Guest Session Error:', err);
+    }
+  };
+
+  // Public guest login wrapper with boot loading sequence
+  const handleGuestLogin = async (storedGuestId?: string) => {
+    await performAuthActionWithLoader(async () => {
+      await executeGuestLogin(storedGuestId);
+    });
+  };
+
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -1195,6 +1356,7 @@ export default function App() {
     }
 
     const checkSession = async () => {
+      const startTime = Date.now();
       try {
         const res = await fetch('/api/auth/me', { credentials: 'include' });
         if (res.ok) {
@@ -1204,13 +1366,21 @@ export default function App() {
           // Check if a guest session exists locally and restore it
           const storedGuestId = localStorage.getItem('studysphere_guest_user_id');
           if (storedGuestId) {
-            await handleGuestLogin(storedGuestId);
+            await executeGuestLogin(storedGuestId);
           }
         }
       } catch (err) {
         console.error('Session check failure:', err);
       } finally {
-        setAuthChecking(false);
+        const elapsed = Date.now() - startTime;
+        const minDuration = 1500;
+        const remaining = Math.max(0, minDuration - elapsed);
+        setTimeout(() => {
+          setLoadingProgress(100);
+          setTimeout(() => {
+            setAuthChecking(false);
+          }, 200);
+        }, remaining);
       }
     };
     checkSession();
@@ -1325,27 +1495,26 @@ export default function App() {
     if (user || authChecking || googleClientId === undefined) return;
 
     const handleGoogleCredentialResponse = async (response: any) => {
-      try {
-        setAuthChecking(true);
-        const res = await fetch('/api/auth/google', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken: response.credential }),
-        });
-        if (res.ok) {
-          const data = await safeParseJson(res, 'Google login response parsing failed.');
-          setUser(data.user);
-          showToast('Successfully signed in with Google!', 'success');
-        } else {
-          const data = await res.json().catch(() => ({}));
-          showToast(data.error || 'Google login failed.', 'error');
+      await performAuthActionWithLoader(async () => {
+        try {
+          const res = await fetch('/api/auth/google', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: response.credential }),
+          });
+          if (res.ok) {
+            const data = await safeParseJson(res, 'Google login response parsing failed.');
+            setUser(data.user);
+            showToast('Successfully signed in with Google!', 'success');
+          } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.error || 'Google login failed.', 'error');
+          }
+        } catch (err) {
+          console.error('Google Sign-in error:', err);
+          showToast('An error occurred during Google Sign-in.', 'error');
         }
-      } catch (err) {
-        console.error('Google Sign-in error:', err);
-        showToast('An error occurred during Google Sign-in.', 'error');
-      } finally {
-        setAuthChecking(false);
-      }
+      });
     };
 
     const initializeGoogleBtn = () => {
@@ -1363,6 +1532,13 @@ export default function App() {
           (window as any).google.accounts.id.renderButton(
             container,
             { theme: theme === 'light' ? 'outline' : 'filled_blue', size: 'large', width: 280 }
+          );
+        }
+        const navContainer = document.getElementById('google-btn-container-nav');
+        if (navContainer) {
+          (window as any).google.accounts.id.renderButton(
+            navContainer,
+            { theme: theme === 'light' ? 'outline' : 'filled_blue', size: 'medium', width: 180 }
           );
         }
       }
@@ -1383,55 +1559,36 @@ export default function App() {
     };
   }, [user, authChecking, theme, googleClientId, googleCallbackUrl]);
 
-  // Guest Session Trigger (Hoisted function declaration to prevent temporal dead zone)
-  async function handleGuestLogin(storedGuestId?: string) {
-    try {
-      const res = await fetch('/api/auth/guest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ guestUserId: storedGuestId })
-      });
-      if (res.ok) {
-        const data = await safeParseJson(res, 'Failed to parse guest session.');
-        setUser(data.user);
-        // Save guest ID to localStorage for session persistence
-        localStorage.setItem('studysphere_guest_user_id', data.user.userId);
-        playSoundEffect('success');
-      }
-    } catch (err) {
-      console.error('Guest Session Error:', err);
-    }
-  }
-
   // Sign Out Handler
   const handleSignOut = async () => {
-    try {
-      await fetch('/api/auth/signout', {
-        method: 'POST',
-        credentials: 'include'
-      }).catch(err => console.error('Sign Out backend error:', err));
-    } catch (err) {
-      console.error('Sign Out Error:', err);
-    } finally {
-      localStorage.removeItem('studysphere_guest_user_id');
-      setUser(null);
-      setBinders([]);
-      setSelectedBinderId('');
-      setDocuments([]);
-      setChatMessages([]);
-      setStudyHistory([]);
-      setGapAnalysis('');
-      setSuggestedPathways([]);
-      setSelectedDocumentText('');
-      setSelectedDocumentName('');
-      setSourceGuideText('');
-      setPodcastTurns([]);
-      setTourStep(null);
-      window.speechSynthesis.cancel();
-      playSoundEffect('click');
-      showToast('Signed out successfully.', 'info');
-    }
+    await performAuthActionWithLoader(async () => {
+      try {
+        await fetch('/api/auth/signout', {
+          method: 'POST',
+          credentials: 'include'
+        }).catch(err => console.error('Sign Out backend error:', err));
+      } catch (err) {
+        console.error('Sign Out Error:', err);
+      } finally {
+        localStorage.removeItem('studysphere_guest_user_id');
+        setUser(null);
+        setBinders([]);
+        setSelectedBinderId('');
+        setDocuments([]);
+        setChatMessages([]);
+        setStudyHistory([]);
+        setGapAnalysis('');
+        setSuggestedPathways([]);
+        setSelectedDocumentText('');
+        setSelectedDocumentName('');
+        setSourceGuideText('');
+        setPodcastTurns([]);
+        setTourStep(null);
+        window.speechSynthesis.cancel();
+        playSoundEffect('click');
+        showToast('Signed out successfully.', 'info');
+      }
+    });
   };
 
   // Binder Management Actions
@@ -2158,230 +2315,264 @@ export default function App() {
     switch (type) {
       case 'flashcards':
         return (
-          <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
-            <FlashcardSRS soundOn={soundOn} />
-          </div>
+          <DismissableArtifactContainer>
+            <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
+              <FlashcardSRS soundOn={soundOn} binderId={activeBinderId} />
+            </div>
+          </DismissableArtifactContainer>
         );
       case 'quiz':
         return (
-          <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
-            <MockExamEngine 
-              initialBinderId={activeBinderId} 
-              initialQuestionCount={questionCount}
-              onGradeCompleted={(gaps, pathways) => {
-                setGapAnalysis(gaps);
-                setSuggestedPathways(pathways);
-                showToast('Exam completed and weakness report generated.', 'success');
-              }} 
-            />
-          </div>
+          <DismissableArtifactContainer>
+            <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
+              <MockExamEngine 
+                initialBinderId={activeBinderId} 
+                initialQuestionCount={questionCount}
+                onGradeCompleted={(gaps, pathways) => {
+                  setGapAnalysis(gaps);
+                  setSuggestedPathways(pathways);
+                  showToast('Exam completed and weakness report generated.', 'success');
+                }} 
+              />
+            </div>
+          </DismissableArtifactContainer>
         );
       case 'weaknesses':
         return (
-          <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-accent" />
-                <h3 className="text-base font-bold text-foreground font-sans">Study Weakness Finder</h3>
-              </div>
-              <button
-                onClick={handleRunGapAnalysis}
-                disabled={documentLoading || !activeBinderId}
-                className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-              >
-                {documentLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                <span>Scan / Refresh</span>
-              </button>
-            </div>
-            {gapAnalysis ? (
-              <div className="space-y-4">
-                <div className="text-xs text-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
-                  <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                    {gapAnalysis}
-                  </ReactMarkdown>
-                </div>
-                {suggestedPathways.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-border">
-                    <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Suggested Study Pathways:</span>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {suggestedPathways.map((path, idx) => (
-                        <div key={idx} className="flex gap-2 p-2 bg-input border border-border rounded-lg text-xs text-foreground font-semibold items-start">
-                          <Check className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                          <span>{path}</span>
-                        </div>
-                      ))}
+          <DismissableArtifactContainer>
+            <WeaknessArtifactWrapper
+              binderId={activeBinderId}
+              gapAnalysis={gapAnalysis}
+              documentLoading={documentLoading}
+              onScan={handleRunGapAnalysis}
+              renderContent={() => (
+                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-accent" />
+                      <h3 className="text-base font-bold text-foreground font-sans">Study Weakness Finder</h3>
                     </div>
+                    <button
+                      onClick={handleRunGapAnalysis}
+                      disabled={documentLoading || !activeBinderId}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                    >
+                      {documentLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      <span>Scan / Refresh</span>
+                    </button>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                <p className="text-xs text-muted">No weakness report compiled yet. Click "Scan / Refresh" or take a Practice Exam to identify conceptual gaps.</p>
-              </div>
-            )}
-          </div>
+                  {gapAnalysis ? (
+                    <div className="space-y-4">
+                      <div className="text-xs text-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+                        <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                          {gapAnalysis}
+                        </ReactMarkdown>
+                      </div>
+                      {suggestedPathways.length > 0 && (
+                        <div className="space-y-2 pt-2 border-t border-border">
+                          <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Suggested Study Pathways:</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {suggestedPathways.map((path, idx) => (
+                              <div key={idx} className="flex gap-2 p-2 bg-input border border-border rounded-lg text-xs text-foreground font-semibold items-start">
+                                <Check className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                                <span>{path}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
+                      <p className="text-xs text-muted">No weakness report compiled yet. Click "Scan / Refresh" or take a Practice Exam to identify conceptual gaps.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            />
+          </DismissableArtifactContainer>
         );
       case 'audio-review':
         return (
-          <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <Headphones className="h-5 w-5 text-accent" />
-                <h3 className="text-base font-bold text-foreground font-sans">Audio Study Review</h3>
-              </div>
-              <button
-                onClick={handleGeneratePodcast}
-                disabled={podcastLoading || !activeBinderId}
-                className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-              >
-                {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                <span>Generate Audio</span>
-              </button>
-            </div>
+          <DismissableArtifactContainer>
+            <AudioReviewArtifactWrapper
+              binderId={activeBinderId}
+              podcastTurns={podcastTurns}
+              podcastLoading={podcastLoading}
+              onGenerate={handleGeneratePodcast}
+              renderContent={() => (
+                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <div className="flex items-center gap-2">
+                      <Headphones className="h-5 w-5 text-accent" />
+                      <h3 className="text-base font-bold text-foreground font-sans">Audio Study Review</h3>
+                    </div>
+                    <button
+                      onClick={handleGeneratePodcast}
+                      disabled={podcastLoading || !activeBinderId}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                    >
+                      {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      <span>Generate Audio</span>
+                    </button>
+                  </div>
 
-            {podcastLoading ? (
-              <div className="flex flex-col justify-center items-center py-10 gap-3">
-                <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                <span className="text-sm font-semibold text-foreground">Compiling review audio dialogue...</span>
-              </div>
-            ) : podcastTurns.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex flex-col p-4 bg-secondary/60 border border-border rounded-xl space-y-4 shadow-md">
-                  <div className="w-full flex items-center justify-between p-3.5 bg-input/50 border border-border rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-lg border ${podcastPlaying ? 'bg-primary/15 border-primary/25 text-primary' : 'bg-secondary border-border text-muted-foreground'}`}>
-                        <Headphones className="h-4.5 w-4.5" />
+                  {podcastLoading ? (
+                    <div className="flex flex-col justify-center items-center py-10 gap-3">
+                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                      <span className="text-sm font-semibold text-foreground">Compiling review audio dialogue...</span>
+                    </div>
+                  ) : podcastTurns.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col p-4 bg-secondary/60 border border-border rounded-xl space-y-4 shadow-md">
+                        <div className="w-full flex items-center justify-between p-3.5 bg-input/50 border border-border rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-lg border ${podcastPlaying ? 'bg-primary/15 border-primary/25 text-primary' : 'bg-secondary border-border text-muted-foreground'}`}>
+                              <Headphones className="h-4.5 w-4.5" />
+                            </div>
+                            <div className="text-left">
+                              <span className="text-[11px] font-bold text-foreground block">Alex & Taylor Briefing</span>
+                              <span className="text-[9.5px] text-muted block">
+                                {podcastPlaying ? 'Playing Audio Review' : 'Audio Review Paused'}
+                              </span>
+                            </div>
+                          </div>
+                          {podcastPlaying && (
+                            <div className="flex items-center gap-0.5 h-3">
+                              <span className="w-0.5 h-full bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.6s' }}></span>
+                              <span className="w-0.5 h-3/4 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.8s' }}></span>
+                              <span className="w-0.5 h-1/2 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-center gap-4">
+                          {podcastPlaying ? (
+                            <button
+                              onClick={pausePodcastPlayback}
+                              className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
+                            >
+                              <Pause className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={startPodcastPlayback}
+                              className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
+                            >
+                              <Play className="h-4 w-4 fill-current" />
+                            </button>
+                          )}
+                          <select
+                            value={podcastSpeed}
+                            onChange={(e) => {
+                              setPodcastSpeed(Number(e.target.value));
+                              if (podcastPlaying) speakDialogue(activePodcastIndex);
+                            }}
+                            className="bg-input border border-border rounded px-2 py-0.5 text-xs text-foreground focus:outline-none"
+                          >
+                            <option value={0.85}>0.85x Speed</option>
+                            <option value={1}>1.0x Speed</option>
+                            <option value={1.2}>1.2x Speed</option>
+                            <option value={1.5}>1.5x Speed</option>
+                          </select>
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <span className="text-[11px] font-bold text-foreground block">Alex & Taylor Briefing</span>
-                        <span className="text-[9.5px] text-muted block">
-                          {podcastPlaying ? 'Playing Audio Review' : 'Audio Review Paused'}
-                        </span>
+
+                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                        {podcastTurns.map((turn, idx) => {
+                          const isActive = idx === activePodcastIndex;
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => {
+                                speakDialogue(idx);
+                                if (!podcastPlaying) setPodcastPlaying(true);
+                              }}
+                              className={`p-2 border rounded-lg cursor-pointer text-xs transition ${
+                                isActive
+                                  ? 'bg-primary/15 border-primary text-foreground font-semibold'
+                                  : 'bg-input/40 border-border text-muted hover:text-foreground'
+                              }`}
+                            >
+                              <span className={`font-bold text-[9px] uppercase tracking-wider block mb-0.5 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
+                                {turn.speaker}
+                              </span>
+                              <p className="leading-relaxed">{turn.text}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    {podcastPlaying && (
-                      <div className="flex items-center gap-0.5 h-3">
-                        <span className="w-0.5 h-full bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.6s' }}></span>
-                        <span className="w-0.5 h-3/4 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.8s' }}></span>
-                        <span className="w-0.5 h-1/2 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-center gap-4">
-                    {podcastPlaying ? (
-                      <button
-                        onClick={pausePodcastPlayback}
-                        className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
-                      >
-                        <Pause className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={startPodcastPlayback}
-                        className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
-                      >
-                        <Play className="h-4 w-4 fill-current" />
-                      </button>
-                    )}
-                    <select
-                      value={podcastSpeed}
-                      onChange={(e) => {
-                        setPodcastSpeed(Number(e.target.value));
-                        if (podcastPlaying) speakDialogue(activePodcastIndex);
-                      }}
-                      className="bg-input border border-border rounded px-2 py-0.5 text-xs text-foreground focus:outline-none"
-                    >
-                      <option value={0.85}>0.85x Speed</option>
-                      <option value={1}>1.0x Speed</option>
-                      <option value={1.2}>1.2x Speed</option>
-                      <option value={1.5}>1.5x Speed</option>
-                    </select>
-                  </div>
+                  ) : (
+                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
+                      <p className="text-xs text-muted">Generate a text-to-speech dialogue briefing of binder concepts.</p>
+                    </div>
+                  )}
                 </div>
-
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                  {podcastTurns.map((turn, idx) => {
-                    const isActive = idx === activePodcastIndex;
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          speakDialogue(idx);
-                          if (!podcastPlaying) setPodcastPlaying(true);
-                        }}
-                        className={`p-2 border rounded-lg cursor-pointer text-xs transition ${
-                          isActive
-                            ? 'bg-primary/15 border-primary text-foreground font-semibold'
-                            : 'bg-input/40 border-border text-muted hover:text-foreground'
-                        }`}
-                      >
-                        <span className={`font-bold text-[9px] uppercase tracking-wider block mb-0.5 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
-                          {turn.speaker}
-                        </span>
-                        <p className="leading-relaxed">{turn.text}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                <p className="text-xs text-muted">Generate a text-to-speech dialogue briefing of binder concepts.</p>
-              </div>
-            )}
-          </div>
+              )}
+            />
+          </DismissableArtifactContainer>
         );
       case 'syllabus':
         return (
-          <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <BookMarked className="h-5 w-5 text-accent" />
-                <h3 className="text-base font-bold text-foreground font-sans">Master Study Syllabus</h3>
-              </div>
-              <button
-                onClick={handleGenerateStudyGuide}
-                disabled={sourceGuideLoading || !activeBinderId}
-                className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-              >
-                {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                <span>Generate Syllabus</span>
-              </button>
-            </div>
+          <DismissableArtifactContainer>
+            <SyllabusArtifactWrapper
+              binderId={activeBinderId}
+              sourceGuideText={sourceGuideText}
+              sourceGuideLoading={sourceGuideLoading}
+              onGenerate={handleGenerateStudyGuide}
+              renderContent={() => (
+                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <div className="flex items-center gap-2">
+                      <BookMarked className="h-5 w-5 text-accent" />
+                      <h3 className="text-base font-bold text-foreground font-sans">Master Study Syllabus</h3>
+                    </div>
+                    <button
+                      onClick={handleGenerateStudyGuide}
+                      disabled={sourceGuideLoading || !activeBinderId}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                    >
+                      {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                      <span>Generate Syllabus</span>
+                    </button>
+                  </div>
 
-            {sourceGuideLoading ? (
-              <div className="flex flex-col justify-center items-center py-10 gap-3">
-                <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                <span className="text-xs text-foreground font-semibold">Creating master study syllabus...</span>
-              </div>
-            ) : sourceGuideText ? (
-              <div className="space-y-3">
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(sourceGuideText);
-                      playSoundEffect('correct');
-                      showToast('Copied syllabus to clipboard!', 'success');
-                    }}
-                    className="px-2 py-1 bg-input border border-border hover:bg-secondary text-[10px] text-foreground rounded flex items-center gap-1 font-semibold transition"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    <span>Copy Markdown</span>
-                  </button>
+                  {sourceGuideLoading ? (
+                    <div className="flex flex-col justify-center items-center py-10 gap-3">
+                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                      <span className="text-xs text-foreground font-semibold">Creating master study syllabus...</span>
+                    </div>
+                  ) : sourceGuideText ? (
+                    <div className="space-y-3">
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(sourceGuideText);
+                            playSoundEffect('correct');
+                            showToast('Copied syllabus to clipboard!', 'success');
+                          }}
+                          className="px-2 py-1 bg-input border border-border hover:bg-secondary text-[10px] text-foreground rounded flex items-center gap-1 font-semibold transition"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>Copy Markdown</span>
+                        </button>
+                      </div>
+                      <div className="glass-panel p-4 rounded-xl shadow-md academic-prose text-xs max-h-72 overflow-y-auto bg-input/40 border border-border">
+                        <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                          {sourceGuideText}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
+                      <p className="text-xs text-muted">Generate a structured master study syllabus from all files in this binder.</p>
+                    </div>
+                  )}
                 </div>
-                <div className="glass-panel p-4 rounded-xl shadow-md academic-prose text-xs max-h-72 overflow-y-auto bg-input/40 border border-border">
-                  <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                    {sourceGuideText}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                <p className="text-xs text-muted">Generate a structured master study syllabus from all files in this binder.</p>
-              </div>
-            )}
-          </div>
+              )}
+            />
+          </DismissableArtifactContainer>
         );
       default:
         return null;
@@ -2764,12 +2955,17 @@ export default function App() {
               )}
             </button>
 
-            <button
-              onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
-              className="text-xs font-semibold text-muted hover:text-foreground transition"
-            >
-              Guest Access
-            </button>
+            {/* Google Sign-In & Guest Access Navbar Block */}
+            <div className="flex items-center gap-2 border border-border/40 bg-input/10 px-3 py-1 rounded-2xl backdrop-blur shadow-sm">
+              <div id="google-btn-container-nav" className="min-h-[36px] flex items-center justify-center"></div>
+              <div className="h-4 w-[1px] bg-border/40 mx-1"></div>
+              <button
+                onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+                className="text-xs font-bold text-white transition bg-gradient-to-r from-primary to-accent hover:opacity-95 px-3.5 py-1.5 rounded-xl active:scale-95 duration-200 transform hover:scale-105"
+              >
+                Guest Access
+              </button>
+            </div>
           </div>
         </nav>
 
@@ -2782,36 +2978,25 @@ export default function App() {
             <span>Powered by Zenith AI Streaming</span>
           </div>
 
-          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight animate-fade-in-up">
             Study <span className="text-primary">Smarter, Faster</span>, and Relational
           </h1>
           
-          <p className="text-xs md:text-sm text-muted max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs md:text-sm text-muted max-w-xl mx-auto leading-relaxed text-muted-foreground animate-fade-in-up" style={{ animationDelay: '100ms' }}>
             The professional AI workspace that synthesizes multiple code files, lecture slides, and text documents into active recall pathways, mock exams, and visual mind maps.
           </p>
 
-          <div className="max-w-md mx-auto w-full bg-[#18181b]/50 border border-white/5 backdrop-blur-md p-6 rounded-2xl text-center space-y-4 shadow-xl mt-6 relative z-10 animate-scale-in">
-            <h3 className="text-sm font-bold text-foreground">Get Started with StudySphere AI</h3>
-            <p className="text-[11px] text-muted max-w-xs mx-auto leading-normal text-muted-foreground">
-              Sign in with Google to sync study binders across devices, or explore with a temporary session.
+          <div className="flex flex-col items-center justify-center gap-4 pt-6 max-w-sm mx-auto z-10 relative animate-scale-in" style={{ animationDelay: '200ms' }}>
+            <button
+              onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+              className="w-full max-w-[280px] py-3.5 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-sm font-extrabold rounded-xl transition duration-300 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Zap className="h-4 w-4" />
+              <span>Start Studying Free</span>
+            </button>
+            <p className="text-[10px] text-muted">
+              No registration required. Sync across devices using Google login in the top-right.
             </p>
-            <div className="flex flex-col items-center justify-center gap-3 pt-2">
-              {/* Google Sign-In Container */}
-              <div id="google-btn-container" className="min-h-[44px] flex items-center justify-center"></div>
-              
-              <div className="flex items-center gap-2 w-full max-w-[280px]">
-                <div className="h-[1.5px] bg-white/5 flex-1" />
-                <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">or</span>
-                <div className="h-[1.5px] bg-white/5 flex-1" />
-              </div>
-              
-              <button
-                onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
-                className="w-full max-w-[280px] py-2.5 bg-transparent hover:bg-white/5 border border-white/10 text-[#fafafa] hover:text-white text-xs font-bold rounded-lg transition duration-200"
-              >
-                Continue as Guest
-              </button>
-            </div>
           </div>
 
           {/* Premium Workspace AI Image Mockup */}
@@ -3067,8 +3252,9 @@ export default function App() {
               <thead>
                 <tr className="bg-input border-b border-border">
                   <th className="p-3 font-semibold text-foreground">Features</th>
-                  <th className="p-3 font-semibold text-primary">StudySphere AI</th>
-                  <th className="p-3 font-semibold text-muted">Traditional PDF Tools</th>
+                  <th className="p-3 font-semibold text-primary">StudySphere AI (Zenith)</th>
+                  <th className="p-3 font-semibold text-muted">Mindgrasp AI</th>
+                  <th className="p-3 font-semibold text-muted">Turbo AI</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -3076,21 +3262,25 @@ export default function App() {
                   <td className="p-3 text-foreground/90">HTTP-only Session Security</td>
                   <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Hardened</td>
                   <td className="p-3 text-muted">Local-storage JWT (Vuln)</td>
+                  <td className="p-3 text-muted">Local-storage JWT (Vuln)</td>
                 </tr>
                 <tr>
-                  <td className="p-3 text-foreground/90">Multi-file Synthesized Index</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> 50MB Limit</td>
-                  <td className="p-3 text-muted">Single File Query</td>
+                  <td className="p-3 text-foreground/90 font-medium">Multi-file Synthesized Index</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> 50MB Limit (Full Binder)</td>
+                  <td className="p-3 text-muted">Basic Single File</td>
+                  <td className="p-3 text-muted">Basic Single File</td>
                 </tr>
                 <tr>
-                  <td className="p-3 text-foreground/90">Active Recall (SM-2 Cards)</td>
+                  <td className="p-3 text-foreground/90 font-medium">Active Recall (SM-2 Cards)</td>
                   <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Relational DB Sync</td>
-                  <td className="p-3 text-muted">None / Static Lists</td>
+                  <td className="p-3 text-muted">Static Summaries Only</td>
+                  <td className="p-3 text-muted">Static Flashcards</td>
                 </tr>
                 <tr>
-                  <td className="p-3 text-foreground/90">Adaptive Mock Exam Engine</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Gap Reviews</td>
-                  <td className="p-3 text-muted">No Assessment Feedback</td>
+                  <td className="p-3 text-foreground/90 font-medium">Adaptive Mock Exam Engine</td>
+                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Gap Reviews & Weaknesses</td>
+                  <td className="p-3 text-muted">Static Questions</td>
+                  <td className="p-3 text-muted">Basic Multiple Choice</td>
                 </tr>
               </tbody>
             </table>
@@ -3815,7 +4005,7 @@ export default function App() {
         {/* ======================================================== */}
         {/* COLUMN 3: RIGHT SIDEBAR (Stats, Gaps, History, Viewer)  */}
         {/* ======================================================== */}
-        <aside className={`fixed inset-y-0 right-0 z-50 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${rightSidebarOpen ? 'translate-x-0' : 'translate-x-full lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
+        <aside className={`fixed inset-y-0 right-0 z-50 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${rightSidebarOpen ? 'translate-x-0 lg:w-[460px] lg:border-l' : 'translate-x-full lg:translate-x-0 lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
           
           {/* Header tabs toggle */}
           <div 
@@ -3848,10 +4038,10 @@ export default function App() {
               );
             })}
             
-            {/* Close side panel button for mobile screens */}
+            {/* Close side panel button */}
             <button
               onClick={() => setRightSidebarOpen(false)}
-              className="px-2 text-muted hover:text-foreground transition lg:hidden"
+              className="px-2 text-muted hover:text-foreground transition ml-auto animate-fade-in"
               title="Close panel"
             >
               <X className="h-3.5 w-3.5" />

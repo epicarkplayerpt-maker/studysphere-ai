@@ -38,18 +38,51 @@ const BLACKLIST_DOMAINS = [
     'answers.yahoo.com',
     'softonic.com',
     'coupon',
-    'spam'
+    'spam',
+    'bokep',
+    'pornhub.com',
+    'xnxx.com',
+    'xhamster.com',
+    'xvideos.com',
+    'erome.com',
+    'xorgasmo.com',
+    'sebokep',
+    'bokepbox',
+    'bokepindo',
+    'redtube',
+    'youporn'
+];
+const ADULT_AND_SPAM_WORDS = [
+    'bokep', 'porn', 'sex', 'tube', 'hentai', 'cam', 'nude', 'chaturbate',
+    'onlyfans', 'erotic', 'adult', 'fuck', 'lust', 'milf', 'xxx', 'escort',
+    'prostitute', 'nsfw', 'xnxx', 'xvideos', 'xhamster', 'erome', 'xorgasmo',
+    'sebokep', 'gambling', 'casino', 'betting', 'slot', 'poker', 'torrent',
+    'warez', 'crack', 'serial', 'coupon', 'promo', 'discount', 'viagra',
+    'cialis', 'pharmacy', 'meds', 'pills', 'boob', 'ass', 'vagina', 'penis',
+    'orgasm', 'redtube', 'youporn', 'hqporner', 'spankbang', 'eporner', 'porntrex',
+    'porngo', 'brazzers', 'bangbros', 'naughty', 'desipapa', 'desisex', 'adultiptv',
+    'leak', 'rip', 'download-free', 'cracked', 'keygens'
 ];
 /**
  * Calculates a quality score for search results based on domain reputation.
+ * Completely filters out adult websites, domain parkers, and spam link farms.
  */
-function scoreResult(urlStr) {
+function scoreResult(urlStr, title = '', snippet = '') {
     try {
         const parsedUrl = new URL(urlStr);
         const host = parsedUrl.hostname.toLowerCase();
+        const path = parsedUrl.pathname.toLowerCase();
+        const lowerTitle = title.toLowerCase();
+        const lowerSnippet = snippet.toLowerCase();
         // Check blacklist first - discard completely if blacklisted
         for (const spam of BLACKLIST_DOMAINS) {
             if (host.includes(spam)) {
+                return -100;
+            }
+        }
+        // Check for adult and spam keywords in url, title, and snippet
+        for (const word of ADULT_AND_SPAM_WORDS) {
+            if (host.includes(word) || path.includes(word) || lowerTitle.includes(word) || lowerSnippet.includes(word)) {
                 return -100;
             }
         }
@@ -279,7 +312,7 @@ async function searchWeb(query) {
         }
         // Rank results based on domain reputation
         const scoredResults = results
-            .map(r => ({ ...r, score: scoreResult(r.url) }))
+            .map(r => ({ ...r, score: scoreResult(r.url, r.title, r.snippet) }))
             .filter(r => r.score > -50); // Filter out blacklisted/spam completely
         scoredResults.sort((a, b) => b.score - a.score);
         const sortedResults = scoredResults.map(({ title, url, snippet }) => ({ title, url, snippet }));

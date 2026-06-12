@@ -13,9 +13,10 @@ interface Flashcard {
 
 interface FlashcardSRSProps {
   soundOn?: boolean;
+  binderId?: string;
 }
 
-export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) => {
+export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, binderId }) => {
   const [cards, setCards] = useState<Flashcard[]>([]);
 
   const playSoundEffect = (type: 'flip' | 'click') => {
@@ -80,7 +81,26 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true }) =>
       });
       if (!res.ok) throw new Error('Failed to retrieve flashcards.');
       const data = await res.json();
-      setCards(data.flashcards || []);
+      let fetchedCards = data.flashcards || [];
+
+      // Auto-generate if there are 0 cards and a binderId is provided
+      if (fetchedCards.length === 0 && binderId) {
+        setError(null);
+        try {
+          const genRes = await fetch(`/api/study/binders/${binderId}/flashcards/generate`, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (genRes.ok) {
+            const genData = await genRes.json();
+            fetchedCards = genData.flashcards || [];
+          }
+        } catch (genErr) {
+          console.error("Auto-generation of flashcards failed:", genErr);
+        }
+      }
+
+      setCards(fetchedCards);
       setCurrentIndex(0);
       setIsFlipped(false);
     } catch (err: any) {
