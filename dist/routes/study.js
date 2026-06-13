@@ -809,8 +809,8 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
         const result = await gemini.generateResponse([{ role: 'user', content: wrappedPrompt }], systemInstruction);
         // Record token usage
         await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Synthesis Query');
-        // Save historical study record (skip for guest users)
-        if (!req.user.isGuest) {
+        // Save historical study record
+        try {
             await prisma_1.default.studyHistory.create({
                 data: {
                     userId,
@@ -818,6 +818,9 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
                     response: result.text,
                 },
             });
+        }
+        catch (dbErr) {
+            logger_1.default.error('Failed to save study query history: %s', dbErr);
         }
         res.json({
             response: result.text,
@@ -837,7 +840,7 @@ router.post('/binders/:binderId/flashcards/generate', async (req, res) => {
     try {
         const binderId = req.params.binderId;
         const userId = req.user.userId;
-        const { prompt, count } = req.body;
+        const { prompt, count } = req.body || {};
         const binder = await prisma_1.default.binder.findFirst({
             where: { id: binderId, userId },
             include: { documents: true }

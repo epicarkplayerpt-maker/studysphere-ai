@@ -19,6 +19,7 @@ import {
   Clock,
   Loader2,
   Upload,
+  Plus,
   X,
   History,
   TrendingUp,
@@ -29,7 +30,6 @@ import {
   ShieldCheck,
   Zap,
   HelpCircle,
-  Globe,
   Eye,
   Copy,
   BookMarked,
@@ -51,6 +51,10 @@ import rehypeKatex from 'rehype-katex';
 import { FlashcardSRS } from './components/FlashcardSRS';
 import { MockExamEngine } from './components/MockExamEngine';
 import { MermaidRenderer } from './components/MermaidRenderer';
+import { useAppStore, store } from './store/AppStore';
+import { VFS } from './services/FileSystemService';
+import { SandboxedApp } from './components/SandboxedApp';
+import { Paperclip } from 'lucide-react';
 
 class SafeErrorBoundary extends React.Component<{ children: React.ReactNode; fallback?: React.ReactNode }, { hasError: boolean }> {
   constructor(props: any) {
@@ -79,7 +83,7 @@ class SafeErrorBoundary extends React.Component<{ children: React.ReactNode; fal
 }
 
 // Interfaces
-interface User {
+export interface User {
   userId: string;
   email: string;
   name: string;
@@ -90,7 +94,7 @@ interface User {
 interface Binder {
   id: string;
   name: string;
-  description: string | null;
+  description?: string | null;
   _count?: {
     documents: number;
   };
@@ -100,7 +104,8 @@ interface Document {
   id: string;
   name: string;
   fileType: string;
-  createdAt: string;
+  content?: string;
+  createdAt?: string;
 }
 
 interface ChatMessage {
@@ -862,16 +867,31 @@ const getFileIconColor = (filename: string): string => {
 
 
 export default function App() {
-  // Theme Toggle State
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('studysphere-theme') as 'light' | 'dark') || 'dark';
-  });
+  // Central State Store Selectors
+  const theme = useAppStore(s => s.theme);
+  const setTheme = (val: 'light' | 'dark' | ((prev: 'light' | 'dark') => 'light' | 'dark')) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().theme) : val;
+    store.setState({ theme: nextVal });
+    localStorage.setItem('studysphere-theme', nextVal);
+  };
 
-  // Authentication State
-  const [user, setUser] = useState<User | null>(null);
+  const user = useAppStore(s => s.user);
+  const setUser = (val: any) => store.setState({ user: val });
+
+  const viewingWorkspace = useAppStore(s => s.viewingWorkspace);
+  const setViewingWorkspace = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().viewingWorkspace) : val;
+    store.setState({ viewingWorkspace: nextVal });
+  };
+
+  const studyMusicPlaying = useAppStore(s => s.studyMusicPlaying);
+  const setStudyMusicPlaying = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().studyMusicPlaying) : val;
+    store.setState({ studyMusicPlaying: nextVal });
+  };
+
   const [authChecking, setAuthChecking] = useState<boolean>(true);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [viewingWorkspace, setViewingWorkspace] = useState<boolean>(false);
 
   // User Memory / Personalization State
   const [customInstructions, setCustomInstructions] = useState<string>('');
@@ -987,31 +1007,33 @@ export default function App() {
     return () => clearInterval(interval);
   }, [authChecking]);
 
-  // Live Study Assistant State
-  const [assistantOpen, setAssistantOpen] = useState<boolean>(false);
-  const [assistantInput, setAssistantInput] = useState<string>('');
-  const [assistantMessages, setAssistantMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: 'Hello! I am your Live Study Assistant. I can track your session, summarize active notes, or clarify questions about files on your screen.' }
-  ]);
-  const [assistantLoading, setAssistantLoading] = useState<boolean>(false);
+  // Session Study Time State
   const [sessionStudyTime, setSessionStudyTime] = useState<number>(0);
 
   // Layout Navigation (Responsive Sidebar Controls)
   const [activeTab, setActiveTab] = useState<'chat' | 'guide' | 'podcast' | 'srs' | 'quiz' | 'synthesis' | 'admin'>('chat');
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(true);
+  const [mobileTab, setMobileTab] = useState<'workbench' | 'chat'>('chat');
 
   // Competitor Document Preview & Gaps Tabs
-  const [activeRightTab, setActiveRightTab] = useState<'gaps' | 'viewer' | 'guide' | 'podcast' | 'srs' | 'quiz'>('viewer');
-  const [selectedDocumentText, setSelectedDocumentText] = useState<string>('');
-  const [selectedDocumentName, setSelectedDocumentName] = useState<string>('');
-  const [documentLoading, setDocumentLoading] = useState<boolean>(false);
+  // Connect tabs, documents, loaders and chat to global store
+  const activeRightTab = useAppStore(s => s.activeRightTab);
+  const setActiveRightTab = (val: 'gaps' | 'viewer' | 'guide' | 'podcast' | 'srs' | 'quiz') => store.setState({ activeRightTab: val });
+
+  const selectedDocumentText = useAppStore(s => s.selectedDocumentText);
+  const setSelectedDocumentText = (val: string) => store.setState({ selectedDocumentText: val });
+
+  const selectedDocumentName = useAppStore(s => s.selectedDocumentName);
+  const setSelectedDocumentName = (val: string) => store.setState({ selectedDocumentName: val });
+
+  const documentLoading = useAppStore(s => s.documentLoading);
+  const setDocumentLoading = (val: boolean) => store.setState({ documentLoading: val });
 
   // Inline Flashcard Modal State (Direct Creation from Chat response)
   const [showInlineCardModal, setShowInlineCardModal] = useState<boolean>(false);
   const [generatingCards, setGeneratingCards] = useState<boolean>(false);
   const [generatedCards, setGeneratedCards] = useState<{ front: string; back: string; selected: boolean }[]>([]);
-  const [studyMusicPlaying, setStudyMusicPlaying] = useState<boolean>(false);
 
   // Translation States
   const [translatingDocId, setTranslatingDocId] = useState<string | null>(null);
@@ -1023,39 +1045,92 @@ export default function App() {
   const [selectedReviewCategory, setSelectedReviewCategory] = useState<'all' | 'stem' | 'humanities' | 'law'>('all');
 
   // Binder & Documents State
-  const [binders, setBinders] = useState<Binder[]>([]);
-  const [selectedBinderId, setSelectedBinderId] = useState<string>('');
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const binders = useAppStore(s => s.binders);
+  const setBinders = (val: Binder[] | ((prev: Binder[]) => Binder[])) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().binders) : val;
+    store.setState({ binders: nextVal });
+  };
+
+  const selectedBinderId = useAppStore(s => s.selectedBinderId);
+  const setSelectedBinderId = (val: string | ((prev: string) => string)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().selectedBinderId) : val;
+    store.setState({ selectedBinderId: nextVal });
+  };
+
+  const documents = useAppStore(s => s.documents);
+  const setDocuments = (val: Document[] | ((prev: Document[]) => Document[])) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().documents) : val;
+    store.setState({ documents: nextVal });
+  };
+
   const [newBinderName, setNewBinderName] = useState<string>('');
   const [showAddBinder, setShowAddBinder] = useState<boolean>(false);
 
   // Upload Progress State
-  const [uploads, setUploads] = useState<Record<string, UploadProgress>>({});
+  const uploads = useAppStore(s => s.uploads);
+  const setUploads = (val: Record<string, UploadProgress> | ((prev: Record<string, UploadProgress>) => Record<string, UploadProgress>)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().uploads) : val;
+    store.setState({ uploads: nextVal });
+  };
+
   const [dragActive, setDragActive] = useState<boolean>(false);
-  const [urlToIngest, setUrlToIngest] = useState<string>('');
-  const [scrapingUrl, setScrapingUrl] = useState<boolean>(false);
 
   // Active Study Chat State
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatMessages = useAppStore(s => s.chatMessages);
+  const setChatMessages = (val: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().chatMessages) : val;
+    store.setState({ chatMessages: nextVal });
+  };
+
   const [chatInput, setChatInput] = useState<string>('');
-  const [chatStreaming, setChatStreaming] = useState<boolean>(false);
-  const [chatError, setChatError] = useState<string | null>(null);
+  const chatStreaming = useAppStore(s => s.chatStreaming);
+  const setChatStreaming = (val: boolean) => store.setState({ chatStreaming: val });
+
+  const chatError = useAppStore(s => s.chatError);
+  const setChatError = (val: string | null) => store.setState({ chatError: val });
+
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [webSearchActive, setWebSearchActive] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Right Sidebar State: History & Gap Analysis
   const [studyHistory, setStudyHistory] = useState<StudyHistoryItem[]>([]);
-  const [gapAnalysis, setGapAnalysis] = useState<string>('');
+
+  const gapAnalysis = useAppStore(s => s.gapAnalysis);
+  const setGapAnalysis = (val: string | null) => store.setState({ gapAnalysis: val || '' });
+
   const [suggestedPathways, setSuggestedPathways] = useState<string[]>([]);
-  const [dueCardsCount, setDueCardsCount] = useState<number>(0);
+
+  const dueCardsCount = useAppStore(s => s.dueCardsCount);
+  const setDueCardsCount = (val: number | ((prev: number) => number)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().dueCardsCount) : val;
+    store.setState({ dueCardsCount: nextVal });
+  };
 
   // Pomodoro Focus Timer
-  const [pomodoroTime, setPomodoroTime] = useState<number>(25 * 60);
-  const [pomodoroActive, setPomodoroActive] = useState<boolean>(false);
-  const [soundOn, setSoundOn] = useState<boolean>(true);
+  const pomodoroTime = useAppStore(s => s.pomodoroTime);
+  const setPomodoroTime = (val: number | ((prev: number) => number)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().pomodoroTime) : val;
+    store.setState({ pomodoroTime: nextVal });
+  };
+
+  const pomodoroActive = useAppStore(s => s.pomodoroActive);
+  const setPomodoroActive = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().pomodoroActive) : val;
+    store.setState({ pomodoroActive: nextVal });
+  };
+
+  const soundOn = useAppStore(s => s.soundOn);
+  const setSoundOn = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().soundOn) : val;
+    store.setState({ soundOn: nextVal });
+  };
 
   // Daily Streak Counter
-  const [streak, setStreak] = useState<number>(3);
+  const streak = useAppStore(s => s.streak);
+  const setStreak = (val: number | ((prev: number) => number)) => {
+    const nextVal = typeof val === 'function' ? val(store.getState().streak) : val;
+    store.setState({ streak: nextVal });
+  };
 
   // Toast Notification System
   interface Toast {
@@ -1422,9 +1497,30 @@ export default function App() {
       const res = await fetch('/api/study/binders', { credentials: 'include' });
       if (res.ok) {
         const data = await safeParseJson(res, 'Failed to fetch binders.');
-        setBinders(data.binders || []);
-        if (data.binders && data.binders.length > 0 && !selectedBinderId) {
-          setSelectedBinderId(data.binders[0].id);
+        const bindersList = data.binders || [];
+        setBinders(bindersList);
+        
+        if (bindersList.length > 0) {
+          if (!selectedBinderId) {
+            setSelectedBinderId(bindersList[0].id);
+          }
+        } else {
+          // Auto-create default study session chat
+          try {
+            const createRes = await fetch('/api/study/binders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ name: 'My Study Chat', description: 'Primary active study workspace' }),
+            });
+            if (createRes.ok) {
+              const newBinder = await createRes.json();
+              setBinders([newBinder]);
+              setSelectedBinderId(newBinder.id);
+            }
+          } catch (createErr) {
+            console.error('Error auto-creating default binder:', createErr);
+          }
         }
       }
     } catch (e) {
@@ -1897,129 +1993,6 @@ export default function App() {
     return context + `[END OF SCREEN CONTEXT]\n\n`;
   };
 
-  const handleAssistantQuery = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!assistantInput.trim() || assistantLoading) return;
-
-    const userMessage: ChatMessage = { role: 'user', content: assistantInput };
-    setAssistantMessages(prev => [...prev, userMessage]);
-    setAssistantInput('');
-    setAssistantLoading(true);
-    playSoundEffect('click');
-
-    // Build context prompt injecting screen context
-    const contextExplanation = getScreenContext();
-
-    const assistantMsgIndex = assistantMessages.length + 1;
-    setAssistantMessages(prev => [...prev, { role: 'assistant', content: '', thoughts: [] }]);
-
-    let fullResponse = '';
-    try {
-      const res = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          messages: [
-            ...assistantMessages,
-            { role: 'user', content: userMessage.content }
-          ],
-          contextExplanation: contextExplanation,
-          binderId: selectedBinderId || undefined,
-          webSearch: webSearchActive,
-          userLocalTime: new Date().toString(),
-          userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Server rejected streaming request.');
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let streamBuffer = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          streamBuffer += decoder.decode(value, { stream: true });
-          const lines = streamBuffer.split('\n');
-          streamBuffer = lines.pop() || '';
-
-          for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.substring(6).trim();
-              if (jsonStr === '[DONE]') continue;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                const chunkText = parsed.text;
-                const chunkThought = parsed.thought;
-                
-                if (chunkThought) {
-                  setAssistantMessages(prev => {
-                    const next = [...prev];
-                    const targetMsg = next[assistantMsgIndex];
-                    if (targetMsg) {
-                      if (!targetMsg.thoughts) targetMsg.thoughts = [];
-                      if (targetMsg.thoughts[targetMsg.thoughts.length - 1] !== chunkThought) {
-                        targetMsg.thoughts.push(chunkThought);
-                      }
-                    }
-                    return next;
-                  });
-                }
-                
-                if (chunkText) {
-                  fullResponse += chunkText;
-                  setAssistantMessages(prev => {
-                    const next = [...prev];
-                    const targetMsg = next[assistantMsgIndex];
-                    if (targetMsg) {
-                      targetMsg.content += chunkText;
-                    }
-                    return next;
-                  });
-                }
-              } catch (e) {}
-            }
-          }
-        }
-      }
-
-      if (user && (user as any).isGuest && fullResponse) {
-        const localKey = `studyHistory_guest_${user.userId}`;
-        try {
-          const stored = localStorage.getItem(localKey);
-          const list = stored ? JSON.parse(stored) : [];
-          list.unshift({
-            id: 'local-' + Date.now(),
-            query: userMessage.content,
-            response: fullResponse,
-            createdAt: new Date().toISOString()
-          });
-          localStorage.setItem(localKey, JSON.stringify(list.slice(0, 100)));
-        } catch (e) {
-          console.error('Failed to save local history:', e);
-        }
-      }
-      fetchHistory();
-    } catch (err: any) {
-      setAssistantMessages(prev => {
-        const next = [...prev];
-        const targetMsg = next[assistantMsgIndex];
-        if (targetMsg) {
-          targetMsg.content = `⚠️ Failed to query assistant: ${err.message || 'Server error'}`;
-        }
-        return next;
-      });
-    } finally {
-      setAssistantLoading(false);
-    }
-  };
-
   // NotebookLM Source Study Guide Generator
   const handleGenerateStudyGuide = async () => {
     if (!selectedBinderId) return;
@@ -2251,10 +2224,31 @@ export default function App() {
     }
   };
 
-  const uploadFiles = (filesList: File[]) => {
-    if (!selectedBinderId) {
-      showToast('Please select or create a binder before uploading documents.', 'info');
-      return;
+  const uploadFiles = async (filesList: File[]) => {
+    let binderId = selectedBinderId;
+    if (!binderId) {
+      try {
+        const res = await fetch('/api/study/binders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: 'My Study Workspace' }),
+        });
+        if (res.ok) {
+          const newBinder = await res.json();
+          setBinders(prev => [newBinder, ...prev]);
+          setSelectedBinderId(newBinder.id);
+          binderId = newBinder.id;
+          showToast('Created default study binder: My Study Workspace', 'success');
+        } else {
+          showToast('Failed to create default binder for upload.', 'error');
+          return;
+        }
+      } catch (err) {
+        console.error('Auto Binder Creation Failure:', err);
+        showToast('Error creating default study binder.', 'error');
+        return;
+      }
     }
 
     const newUploads = { ...uploads };
@@ -2269,81 +2263,48 @@ export default function App() {
     setUploads(newUploads);
 
     filesList.forEach(file => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      formData.append('files', file);
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          setUploads(prev => ({
-            ...prev,
-            [file.name]: {
-              ...prev[file.name],
-              loaded: e.loaded,
-              status: 'uploading',
-            },
-          }));
+      VFS.write(binderId, file, (progressPercent) => {
+        const loadedBytes = Math.round((progressPercent / 100) * file.size);
+        setUploads(prev => ({
+          ...prev,
+          [file.name]: {
+            ...prev[file.name],
+            loaded: loadedBytes,
+            status: 'uploading',
+          },
+        }));
+      })
+      .then(() => {
+        setUploads(prev => ({
+          ...prev,
+          [file.name]: {
+            ...prev[file.name],
+            loaded: file.size,
+            status: 'completed',
+          },
+        }));
+        playSoundEffect('correct');
+        fetchDocuments();
+        fetchBinders();
+        
+        // Post ingestion message directly to chat
+        const autoMsgContent = `Uploaded and ingested \`${file.name}\`. Zenith AI has parsed the layout and added it to your active study context.`;
+        setChatMessages(prev => [...prev, { role: 'system', content: autoMsgContent }]);
+        
+        if (tourStep === 2) {
+          setTourStep(3); // Advance onboarding tour
         }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setUploads(prev => ({
-            ...prev,
-            [file.name]: {
-              ...prev[file.name],
-              loaded: file.size,
-              status: 'completed',
-            },
-          }));
-          playSoundEffect('correct');
-          fetchDocuments();
-          fetchBinders();
-          if (tourStep === 2) {
-            setTourStep(3); // Advance onboarding tour
-          }
-        } else {
-          let errorMsg = `Upload failed with code ${xhr.status}`;
-          try {
-            const parsed = JSON.parse(xhr.responseText);
-            if (parsed.error) errorMsg = parsed.error;
-          } catch(err) {}
-
-          setUploads(prev => ({
-            ...prev,
-            [file.name]: {
-              ...prev[file.name],
-              status: 'failed',
-              error: errorMsg,
-            },
-          }));
-        }
-      });
-
-      xhr.addEventListener('error', () => {
+      })
+      .catch((err: any) => {
         setUploads(prev => ({
           ...prev,
           [file.name]: {
             ...prev[file.name],
             status: 'failed',
-            error: 'Network failure during upload.',
+            error: err.message || 'Upload failed',
           },
         }));
       });
-
-      xhr.upload.addEventListener('load', () => {
-        setUploads(prev => ({
-          ...prev,
-          [file.name]: {
-            ...prev[file.name],
-            status: 'extracting',
-          },
-        }));
-      });
-
-      xhr.open('POST', `/api/study/binders/${selectedBinderId}/documents`);
-      xhr.withCredentials = true;
-      xhr.send(formData);
     });
   };
 
@@ -2355,32 +2316,7 @@ export default function App() {
     });
   };
 
-  const handleIngestURL = async () => {
-    if (!selectedBinderId || !urlToIngest.trim()) return;
-    try {
-      setScrapingUrl(true);
-      const res = await fetch(`/api/study/binders/${selectedBinderId}/documents/url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ url: urlToIngest }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast('Web page successfully crawled and added to binder context!', 'success');
-        setUrlToIngest('');
-        fetchDocuments();
-        playSoundEffect('correct');
-      } else {
-        showToast(data.error || 'Failed to crawl web page.', 'error');
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Error connecting to web crawler endpoint.', 'error');
-    } finally {
-      setScrapingUrl(false);
-    }
-  };
+
 
   const renderChatArtifact = (type: string, binderId?: string, questionCount?: number) => {
     const activeBinderId = binderId || selectedBinderId;
@@ -2652,6 +2588,32 @@ export default function App() {
     }
   };
 
+  // Inline Refinement / Human-in-the-Loop Handlers
+  const handleStartRefinement = (index: number) => {
+    const updated = [...chatMessages];
+    updated[index] = { ...updated[index], isEditing: true };
+    setChatMessages(updated);
+  };
+
+  const handleCancelRefinement = (index: number) => {
+    const updated = [...chatMessages];
+    updated[index] = { ...updated[index], isEditing: false };
+    setChatMessages(updated);
+  };
+
+  const handleUpdateMessageContent = (index: number, val: string) => {
+    const updated = [...chatMessages];
+    updated[index] = { ...updated[index], content: val };
+    setChatMessages(updated);
+  };
+
+  const handleSaveRefinement = (index: number) => {
+    const updated = [...chatMessages];
+    updated[index] = { ...updated[index], isEditing: false };
+    setChatMessages(updated);
+    showToast('AI response updated locally.', 'success');
+  };
+
   // Chat Streaming
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2683,7 +2645,7 @@ export default function App() {
           ],
           contextExplanation: contextExplanation,
           binderId: selectedBinderId || undefined,
-          webSearch: webSearchActive,
+          webSearch: true,
           userLocalTime: new Date().toString(),
           userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
@@ -3516,6 +3478,14 @@ export default function App() {
             </div>
           </div>
 
+          {/* Session Study Time Timer */}
+          <div className="hidden sm:flex items-center bg-input border border-border/45 rounded-xl px-3 py-1.5 text-xs gap-2 shadow-inner" title="Active Study Session Time">
+            <Clock className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+            <span className="font-mono text-foreground font-medium">
+              {formatStudyTime(sessionStudyTime)}
+            </span>
+          </div>
+
           {/* Daily Streak */}
           <div className="flex items-center gap-1.5 bg-input border border-border/45 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-purple-400 shadow-inner">
             <span>🔥</span>
@@ -3598,51 +3568,51 @@ export default function App() {
           (tourStep === 2 || tourStep === 3) ? 'z-[9991] translate-x-0' : 'z-50'
         } ${sidebarOpen ? 'translate-x-0 lg:w-72 lg:border-r' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:border-r-0 lg:overflow-hidden'}`}>
           
-          {/* Binders Folder Header */}
+          {/* Study Chats Header */}
           <div className="p-3 border-b border-border flex justify-between items-center flex-shrink-0 bg-input/20">
-            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Study Binders</span>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Study Chats</span>
             <div className="flex items-center gap-1.5">
               <button
                 id="tour-step-binders"
                 onClick={() => setShowAddBinder(!showAddBinder)}
                 className={`p-1 hover:bg-input border border-border rounded text-muted hover:text-primary transition ${tourStep === 2 ? 'tour-pulse-active border-primary relative z-[9992] bg-secondary' : ''}`}
-                title="Create Binder"
+                title="New Chat Session"
               >
-                <FolderPlus className="h-4 w-4" />
+                <MessageSquare className="h-4 w-4" />
               </button>
               {/* Close sidebar button for mobile */}
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="p-1 hover:bg-input border border-border rounded text-muted hover:text-foreground transition lg:hidden"
-                title="Close binders"
+                title="Close sidebar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          {/* Add Binder form inline */}
+          {/* Add Chat Session form inline */}
           {showAddBinder && (
             <form onSubmit={handleCreateBinder} className="p-3 border-b border-border space-y-2 bg-input/40 animate-fade-in-up">
               <input
                 type="text"
                 value={newBinderName}
                 onChange={(e) => setNewBinderName(e.target.value)}
-                placeholder="Name your binder (e.g. CS 101)..."
+                placeholder="Chat Session Name (e.g. Biology Quiz)..."
                 required
                 className="w-full bg-input border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <div className="flex justify-end gap-1.5 text-[10px]">
                 <button type="button" onClick={() => setShowAddBinder(false)} className="px-2 py-1 text-muted hover:text-foreground">Cancel</button>
-                <button type="submit" className="px-3 py-1 bg-primary text-primary-foreground rounded font-bold transition">Create</button>
+                <button type="submit" className="px-3 py-1 bg-primary text-primary-foreground rounded font-bold transition">Start Chat</button>
               </div>
             </form>
           )}
 
-          {/* Binder Scrollable List */}
+          {/* Chat Session Scrollable List */}
           <div className="flex-1 overflow-y-auto p-2.5 space-y-1 max-h-[35vh] border-b border-border">
             {binders.length === 0 ? (
-              <div className="text-center py-4 text-xs text-muted">No binders. Create one to begin.</div>
+              <div className="text-center py-4 text-xs text-muted">No chats. Start one to begin.</div>
             ) : (
               binders.map(binder => (
                 <div
@@ -3658,7 +3628,7 @@ export default function App() {
                     <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-gradient-to-b from-primary to-accent rounded-r" />
                   )}
                   <div className="flex items-center gap-2 truncate pr-2">
-                    <BookOpen className={`h-4 w-4 flex-shrink-0 ${selectedBinderId === binder.id ? 'text-primary' : 'text-muted'}`} />
+                    <MessageSquare className={`h-4 w-4 flex-shrink-0 ${selectedBinderId === binder.id ? 'text-primary' : 'text-muted'}`} />
                     <span className="text-xs truncate">{binder.name}</span>
                     <span className="text-[9px] px-1.5 py-0.2 bg-input border border-border rounded text-muted font-normal">
                       {binder._count?.documents || 0}
@@ -3675,67 +3645,24 @@ export default function App() {
             )}
           </div>
 
-          {/* File Ingestion Drop-Zone & File Manager */}
+          {/* Context Files Ingestion & Manager */}
           <div className="flex-[1.5] flex flex-col overflow-hidden">
             <div className="px-3 py-2 border-b border-border bg-input/20 flex items-center justify-between flex-shrink-0">
-              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Ingestion Drop-zone</span>
+              <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Active Study Files</span>
+              {selectedBinderId && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-1 hover:bg-input border border-border rounded text-muted hover:text-primary transition flex items-center gap-1 text-[9px]"
+                  title="Upload context files"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Add File</span>
+                </button>
+              )}
             </div>
 
             <div className="p-3 flex-1 flex flex-col overflow-y-auto space-y-3">
-              {/* Drop-zone */}
-              {selectedBinderId ? (
-                <>
-                  <div
-                    id="tour-step-upload"
-                    onDragEnter={handleDrag}
-                    onDragOver={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-xl p-3.5 text-center transition flex flex-col justify-center items-center gap-1 cursor-pointer ${
-                      dragActive 
-                        ? 'border-primary bg-primary/10' 
-                        : `border-border hover:border-muted-foreground/40 bg-input/20 ${tourStep === 3 ? 'tour-pulse-active border-primary relative z-[9992] bg-secondary' : ''}`
-                    }`}
-                  >
-                    <Upload className="h-5 w-5 text-muted" />
-                    <span className="text-[10.5px] font-semibold text-foreground">Drag & drop context files here</span>
-                    <label className="text-[9.5px] px-2.5 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg cursor-pointer transition">
-                      Browse Files
-                      <input type="file" multiple onChange={handleFileSelect} className="hidden" />
-                    </label>
-                    <span className="text-[8.5px] text-muted">Supports PDF, DOCX, Code, Text</span>
-                  </div>
-
-                  {/* Web Page Scraper Ingestion */}
-                  <div className="bg-input/20 border border-border/40 p-2.5 rounded-xl space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <Globe className="h-3.5 w-3.5 text-accent animate-pulse" />
-                      <span className="text-[10px] font-bold text-foreground">Index Web Page URL</span>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <input
-                        type="url"
-                        placeholder="https://example.com/notes"
-                        value={urlToIngest}
-                        onChange={(e) => setUrlToIngest(e.target.value)}
-                        className="flex-1 bg-input border border-border text-[9.5px] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                      />
-                      <button
-                        onClick={handleIngestURL}
-                        disabled={scrapingUrl || !urlToIngest.trim()}
-                        className="px-2.5 py-1 bg-primary text-primary-foreground text-[9.5px] font-bold rounded hover:opacity-90 transition disabled:opacity-50 flex items-center justify-center min-w-[55px]"
-                      >
-                        {scrapingUrl ? 'Scraping...' : 'Crawl'}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="border border-border rounded-xl p-3 text-center text-xs text-muted bg-input/20">
-                  Select a binder above to enable ingestion.
-                </div>
-              )}
-
               {/* Uploading progress status list */}
               {Object.keys(uploads).length > 0 && (
                 <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
@@ -3773,11 +3700,16 @@ export default function App() {
               )}
 
               {/* Ingested Documents List */}
-              {selectedBinderId && (
+              {selectedBinderId ? (
                 <div className="space-y-1 flex-1">
-                  <div className="text-[9px] uppercase font-bold text-muted tracking-wider pl-1 mb-1">Ingested Context Files ({documents.length})</div>
                   {documents.length === 0 ? (
-                    <div className="text-center py-4 text-[10px] text-muted">No documents in binder.</div>
+                    <div className="text-center py-6 text-[10px] text-muted border border-dashed border-border/60 rounded-xl p-4 space-y-2">
+                      <FileText className="h-8 w-8 text-muted/30 mx-auto" />
+                      <p>No documents in this session.</p>
+                      <p className="text-[9px] text-muted-foreground leading-normal">
+                        Click the paperclip button in the chat or drag & drop files here to upload.
+                      </p>
+                    </div>
                   ) : (
                     <div className="space-y-1">
                       {documents.map(doc => (
@@ -3823,23 +3755,28 @@ export default function App() {
                               )}
                             </div>
                             <button
-                              onClick={() => handleViewDocumentText(doc.id, doc.name)}
+                              onClick={(e) => { e.stopPropagation(); handleViewDocumentText(doc.id, doc.name); }}
                               className="p-0.5 hover:bg-secondary text-muted hover:text-primary rounded transition"
-                              title="Viewer text display"
+                              title="Read File"
                             >
-                              <Eye className="h-3 w-3" />
+                              <Eye className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => handleDeleteDocument(doc.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
                               className="p-0.5 hover:bg-secondary text-muted hover:text-red-500 rounded transition"
+                              title="Delete File"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
+                </div>
+              ) : (
+                <div className="border border-border rounded-xl p-3 text-center text-xs text-muted bg-input/20">
+                  Select or start a chat session to upload files.
                 </div>
               )}
             </div>
@@ -3964,7 +3901,34 @@ export default function App() {
         {/* ======================================================== */}
         {/* COLUMN 2: CENTRAL WORKSPACE (Active Tab view)           */}
         {/* ======================================================== */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-background">
+        <main className={`flex-1 flex-col overflow-hidden bg-background border-r border-border/40 ${mobileTab === 'workbench' ? 'flex' : 'hidden lg:flex'}`}>
+          {/* Mobile Workspace Tabs Switcher */}
+          <div className="flex lg:hidden bg-secondary border-b border-border p-2 flex-shrink-0 gap-2">
+            <button
+              onClick={() => { setMobileTab('workbench'); playSoundEffect('click'); }}
+              type="button"
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                mobileTab === 'workbench'
+                  ? 'bg-primary text-primary-foreground shadow'
+                  : 'text-muted hover:bg-input hover:text-foreground'
+              }`}
+            >
+              <BookOpen className="h-4 w-4" />
+              <span>Source Workbench</span>
+            </button>
+            <button
+              onClick={() => { setMobileTab('chat'); playSoundEffect('click'); }}
+              type="button"
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                mobileTab === 'chat'
+                  ? 'bg-primary text-primary-foreground shadow'
+                  : 'text-muted hover:bg-input hover:text-foreground'
+              }`}
+            >
+              <Sparkles className="h-4 w-4 animate-pulse text-accent" />
+              <span>Zenith Chat</span>
+            </button>
+          </div>
           {activeTab === 'admin' && user?.email === 'epicarkplayerpt@gmail.com' ? (
             <div className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full h-full min-h-0 overflow-y-auto relative">
               <AdminMetricsView 
@@ -3975,664 +3939,739 @@ export default function App() {
               />
             </div>
           ) : (
-            <div className="flex-1 flex flex-col h-full overflow-hidden p-4 md:p-6">
-            <div 
-              id="tour-step-chat"
-              className={`flex-1 flex flex-col min-h-0 max-w-5xl xl:max-w-6xl mx-auto w-full ${tourStep === 5 ? 'relative z-[9992] bg-background border border-primary/20 p-4 rounded-2xl shadow-2xl' : ''}`}
-            >
-              
-              {selectedBinderId && (
-                <div className="flex-shrink-0 bg-secondary/30 border border-border/40 px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2.5 mb-3 backdrop-blur-md">
-                  <div className="flex items-center gap-2 text-[10px] sm:text-xs">
-                    <div className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </div>
-                    <span className="text-muted">
-                      Active Context: <strong className="text-foreground font-semibold">{binders.find(b => b.id === selectedBinderId)?.name}</strong>
-                    </span>
-                    <span className="text-border">|</span>
-                    <span className="text-[9.5px] text-muted-foreground bg-input/40 px-2 py-0.5 rounded-md border border-border/30">
-                      {documents.filter(d => d.fileType !== 'web-crawler').length} files
-                    </span>
-                    {documents.filter(d => d.fileType === 'web-crawler').length > 0 && (
-                      <span className="text-[9.5px] text-[#818cf8] bg-[#6366f1]/15 px-2 py-0.5 rounded-md border border-[#6366f1]/25">
-                        {documents.filter(d => d.fileType === 'web-crawler').length} web pages
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[9.5px] text-muted-foreground flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                    <span>Zenith AI Online</span>
-                  </div>
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
+              {/* Workbench Header & Tab Swapper */}
+              <div className="border-b border-border bg-input/10 flex items-center justify-between p-3 flex-shrink-0">
+                <div 
+                  id="tour-step-tools"
+                  className={`flex overflow-x-auto gap-1.5 scrollbar-none p-1 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
+                >
+                  {[
+                    { id: 'viewer', label: 'PDF/Content Reader', icon: FileText },
+                    { id: 'guide', label: 'Study Syllabus', icon: BookMarked },
+                    { id: 'podcast', label: 'Audio Briefing', icon: Headphones },
+                    { id: 'srs', label: 'Active Recall Cards', icon: Layers },
+                    { id: 'quiz', label: 'Practice Quiz', icon: Award },
+                    { id: 'gaps', label: 'Weakness Finder', icon: TrendingUp },
+                  ].map(tab => {
+                    const Icon = tab.icon;
+                    const isActive = activeRightTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
+                        className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition whitespace-nowrap transform active:scale-95 duration-200 ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10'
+                            : 'text-muted hover:bg-input hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+                
+                {/* Right panel toggle in header */}
+                <button
+                  onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+                  className="p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200 lg:hidden"
+                  title="Toggle Chat sidebar"
+                >
+                  <MessageSquare className="h-4.5 w-4.5" />
+                </button>
+              </div>
 
-              {/* Chat Feed Messages Area */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1 scrollbar-none">
-                {chatMessages.length === 0 ? (
-                  <div className="h-full min-h-[300px] flex flex-col justify-center items-center text-center p-6 gap-3">
-                    <Sparkles className="h-8 w-8 text-primary/45 animate-spin" style={{ animationDuration: '3s' }} />
-                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">StudySphere Interactive Chat</h3>
-                    <p className="text-[11.5px] text-muted max-w-sm leading-relaxed">
-                      Select a binder and ask questions. Use floating prompt templates below or click a starter concept to begin learning.
-                    </p>
-                    {selectedBinderId && (
-                      <div className="text-[9px] bg-input border border-border px-2.5 py-1 rounded-full text-accent font-semibold">
-                        Active Context: {binders.find(b => b.id === selectedBinderId)?.name}
+              {/* Sandboxed Interactive App Container */}
+              <div className="flex-1 overflow-y-auto flex flex-col min-h-0 bg-input/5">
+                <SandboxedApp appName={activeRightTab}>
+                  {/* 1. Document Reader */}
+                  {activeRightTab === 'viewer' && (
+                    <div className="flex-1 flex flex-col min-h-0 bg-input/5 animate-fade-in">
+                      <div className="p-4 border-b border-border bg-input/10 flex items-center justify-between flex-shrink-0">
+                        <span className="text-xs font-bold text-foreground truncate max-w-[280px] sm:max-w-[400px]">
+                          {selectedDocumentName || 'Source Document'}
+                        </span>
+                        {selectedDocumentText && (
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedDocumentText);
+                              playSoundEffect('correct');
+                              showToast('Copied document text to clipboard!', 'success');
+                            }}
+                            className="text-[10px] px-3 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg font-semibold transition"
+                          >
+                            Copy All
+                          </button>
+                        )}
                       </div>
-                    )}
-                    
-                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-lg w-full">
-                      {[
-                        { label: "Summarize core concepts", text: "Summarize the key core concepts of this binder in a clear markdown bullet list with code examples." },
-                        { label: "Explain key terminology", text: "Create a glossary of the top 10 key terms and definitions found inside this binder." },
-                        { label: "Draft review schedule", text: "Suggest a 5-day structured study schedule based on the topics in this binder." },
-                        { label: "Find conceptual gaps", text: "Help me identify potential conceptual gaps or weak points in my understanding of these notes." }
-                      ].map((chip, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setChatInput(chip.text);
-                            playSoundEffect('click');
-                          }}
-                          className="p-3 bg-secondary/80 border border-border hover:border-primary/40 hover:bg-secondary rounded-xl text-left text-[11px] text-muted hover:text-foreground transition flex flex-col gap-1 shadow-sm"
-                        >
-                          <span className="font-semibold text-foreground">{chip.label}</span>
-                          <span className="text-[10px] text-muted leading-tight truncate">{chip.text}</span>
-                        </button>
-                      ))}
+
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4 font-sans text-sm text-foreground leading-relaxed whitespace-pre-wrap selection:bg-primary/20 select-text">
+                        {documentLoading ? (
+                          <div className="flex flex-col justify-center items-center py-32 gap-3 text-muted">
+                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                            <span className="text-xs uppercase tracking-widest font-semibold">Extracting text layout...</span>
+                          </div>
+                        ) : selectedDocumentText ? (
+                          <div className="p-4 bg-input border border-border rounded-2xl font-mono text-xs max-h-[70vh] overflow-y-auto leading-normal">
+                            {selectedDocumentText}
+                          </div>
+                        ) : (
+                          <div className="text-center py-28 text-muted space-y-3 px-6 max-w-md mx-auto">
+                            <FileText className="h-10 w-10 text-muted/50 mx-auto" />
+                            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">No Document Selected</h4>
+                            <p className="text-xs leading-normal">Select the preview icon next to any document in the sidebar to review its text chunks.</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-5 py-4 px-1">
-                    {chatMessages.map((msg, index) => {
-                      const isUser = msg.role === 'user';
-                      return (
-                        <div
-                          key={index}
-                          className={`flex gap-3 text-xs leading-relaxed animate-fade-in-up ${
-                            isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
-                          } max-w-[85%]`}
-                        >
-                          {/* Avatar Indicator */}
-                          <div className="flex-shrink-0">
-                            {isUser ? (
-                              user?.picture ? (
-                                <img src={user.picture} alt="User" className="w-8 h-8 rounded-full border border-primary/20 shadow-sm" />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-primary/25 border border-primary/30 flex items-center justify-center font-bold text-primary shadow-sm">
-                                  {user?.name ? user.name[0].toUpperCase() : 'U'}
+                  )}
+
+                  {/* 2. Study Guide / Syllabus */}
+                  {activeRightTab === 'guide' && (
+                    <div className="p-6 space-y-5 animate-fade-in max-w-4xl mx-auto w-full">
+                      <div className="flex justify-between items-center border-b border-border pb-3">
+                        <span className="text-xs font-bold text-foreground">Binder Study Syllabus</span>
+                        {selectedBinderId && documents.length > 0 && (
+                          <button
+                            onClick={handleGenerateStudyGuide}
+                            disabled={sourceGuideLoading}
+                            className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5"
+                          >
+                            {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                            <span>Generate Syllabus</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {!selectedBinderId ? (
+                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
+                          <span className="text-xs text-muted">Select a Document Binder in the sidebar to compile syllabus.</span>
+                        </div>
+                      ) : documents.length === 0 ? (
+                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl space-y-2">
+                          <FileText className="h-8 w-8 text-muted mx-auto" />
+                          <p className="text-xs text-muted">No documents in binder. Upload files to generate a syllabus.</p>
+                        </div>
+                      ) : sourceGuideLoading ? (
+                        <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl">
+                          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                          <span className="text-xs text-foreground font-semibold">Analyzing binder files...</span>
+                          <span className="text-[10px] text-muted text-center max-w-[280px]">Structuring core review guides, FAQS, glossaries and active recall landmarks</span>
+                        </div>
+                      ) : sourceGuideText ? (
+                        <div className="space-y-4 animate-fade-in-up">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(sourceGuideText);
+                                playSoundEffect('correct');
+                                showToast('Copied study syllabus to clipboard!', 'success');
+                              }}
+                              className="px-3 py-1.5 bg-input border border-border hover:bg-secondary text-xs text-foreground rounded-lg flex items-center gap-1.5 font-semibold transition"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>Copy Markdown</span>
+                            </button>
+                          </div>
+                          <div className="glass-panel p-6 rounded-2xl shadow-md academic-prose text-sm max-h-[70vh] overflow-y-auto bg-input/40 border border-border select-text">
+                            <SafeErrorBoundary>
+                              <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                                {sourceGuideText}
+                              </ReactMarkdown>
+                            </SafeErrorBoundary>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto">
+                          <BookMarked className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
+                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Generate Syllabus</h4>
+                          <p className="text-xs text-muted leading-relaxed">
+                            Generate core concept reviews, FAQs, and terminology glossaries from all files in this binder.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3. AI Podcast / Audio Review */}
+                  {activeRightTab === 'podcast' && (
+                    <div className="p-6 space-y-5 animate-fade-in max-w-2xl mx-auto w-full">
+                      <div className="flex justify-between items-center border-b border-border pb-3">
+                        <span className="text-xs font-bold text-foreground">AI Audio Briefing</span>
+                        {selectedBinderId && documents.length > 0 && (
+                          <button
+                            onClick={handleGeneratePodcast}
+                            disabled={podcastLoading}
+                            className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5"
+                          >
+                            {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                            <span>Compile Briefing</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {!selectedBinderId ? (
+                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
+                          <span className="text-xs text-muted">Select a Document Binder to generate podcast reviews.</span>
+                        </div>
+                      ) : documents.length === 0 ? (
+                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
+                          <span className="text-xs text-muted">No documents found in binder.</span>
+                        </div>
+                      ) : podcastLoading ? (
+                        <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl">
+                          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                          <span className="text-xs text-foreground font-semibold">Compiling briefing audio script...</span>
+                          <span className="text-[10px] text-muted">Zenith dialogue engine is preparing discussion channels</span>
+                        </div>
+                      ) : podcastTurns.length > 0 ? (
+                        <div className="space-y-5 animate-fade-in-up">
+                          {/* Pulsing Visualizer Media Widget */}
+                          <div className="flex flex-col items-center justify-center p-6 bg-secondary border border-border rounded-2xl space-y-4 shadow-lg relative overflow-hidden group">
+                            <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-accent/5 pointer-events-none" />
+                            
+                            <div className="relative w-32 h-32 bg-input border border-border rounded-full flex items-center justify-center shadow-inner">
+                              <div className={`w-28 h-28 border-2 border-dashed border-primary/20 rounded-full flex items-center justify-center ${podcastPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '12s' }}>
+                                <div className="w-12 h-12 bg-secondary border border-border rounded-full"></div>
+                              </div>
+                              {podcastPlaying && (
+                                <div className="absolute flex items-center gap-1 h-4">
+                                  <span className="w-0.5 h-full bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                                  <span className="w-0.5 h-3/4 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+                                  <span className="w-0.5 h-1/2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                                 </div>
-                              )
+                              )}
+                            </div>
+
+                            <div className="text-center space-y-1">
+                              <h4 className="text-xs font-bold text-foreground">Interactive Audio Briefing</h4>
+                              <p className="text-[10px] text-muted">Alex & Taylor Co-hosts</p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              {podcastPlaying ? (
+                                <button
+                                  onClick={pausePodcastPlayback}
+                                  className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
+                                >
+                                  <Pause className="h-4.5 w-4.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={startPodcastPlayback}
+                                  className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
+                                >
+                                  <Play className="h-4.5 w-4.5 fill-current" />
+                                </button>
+                              )}
+                              <select
+                                value={podcastSpeed}
+                                onChange={(e) => {
+                                  setPodcastSpeed(Number(e.target.value));
+                                  if (podcastPlaying) speakDialogue(activePodcastIndex);
+                                }}
+                                className="bg-input border border-border rounded-xl px-2.5 py-1 text-xs text-foreground focus:outline-none transition hover:border-muted-foreground/30"
+                              >
+                                <option value={0.85}>0.85x Speed</option>
+                                <option value={1}>1.0x Speed</option>
+                                <option value={1.2}>1.2x Speed</option>
+                                <option value={1.5}>1.5x Speed</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Scrolling Script turns */}
+                          <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-2 select-text">
+                            {podcastTurns.map((turn, idx) => {
+                              const isActive = idx === activePodcastIndex;
+                              return (
+                                <div
+                                  key={idx}
+                                  id={`podcast-turn-${idx}`}
+                                  onClick={() => {
+                                    speakDialogue(idx);
+                                    if (!podcastPlaying) setPodcastPlaying(true);
+                                  }}
+                                  className={`p-3.5 border rounded-xl cursor-pointer text-xs transition-all duration-300 ${
+                                    isActive
+                                      ? 'bg-primary/10 border-primary/30 shadow-md scale-[1.01]'
+                                      : 'bg-input/40 border-border hover:border-muted-foreground/20 text-muted hover:text-foreground'
+                                  }`}
+                                >
+                                  <span className={`font-bold uppercase tracking-wider text-[9px] block mb-1 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
+                                    {turn.speaker}
+                                  </span>
+                                  <p className="leading-relaxed font-sans">{turn.text}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto">
+                          <SpeakerIcon className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
+                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Audio podcast Briefing</h4>
+                          <p className="text-xs text-muted leading-relaxed">
+                            Generate a full text-to-speech discussion overview of your binder files.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4. Active Recall Cards (SRS) */}
+                  {activeRightTab === 'srs' && (
+                    <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
+                      <div className="border-b border-border pb-3 mb-4 flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground">Recall Flashcards Deck</span>
+                        <span className="text-[10px] font-bold bg-input border border-border px-3 py-1 rounded-lg text-muted">
+                          {dueCardsCount} cards due
+                        </span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto min-h-0">
+                        <FlashcardSRS soundOn={soundOn} binderId={selectedBinderId} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. Practice Exam / Quiz */}
+                  {activeRightTab === 'quiz' && (
+                    <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
+                      <div className="border-b border-border pb-3 mb-4">
+                        <span className="text-xs font-bold text-foreground">Practice Mock Exams</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto min-h-0">
+                        <MockExamEngine onGradeCompleted={handleExamGradeCompleted} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 6. Weakness Finder (Stats/Gaps) */}
+                  {activeRightTab === 'gaps' && (
+                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full p-6 space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+                        
+                        {/* Section 1: History Log */}
+                        <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
+                          <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0">
+                            <History className="h-4 w-4 text-primary" />
+                            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Concept Query History</span>
+                          </div>
+                          <div className="flex-1 overflow-y-auto p-4 space-y-2 select-text">
+                            {studyHistory.length === 0 ? (
+                              <div className="text-center py-10 text-xs text-muted">No query history found. Try asking a question!</div>
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-extrabold text-primary-foreground shadow shadow-primary/20">
-                                S
+                              studyHistory.map(item => (
+                                <div
+                                  key={item.id}
+                                  onClick={() => handleLoadHistoryItem(item)}
+                                  className="p-3 border border-border bg-input/30 hover:border-primary/40 hover:bg-input cursor-pointer transition text-left space-y-1.5 rounded-xl"
+                                >
+                                  <p className="text-xs font-semibold text-foreground truncate">{item.query}</p>
+                                  <div className="flex justify-between items-center text-[10px] text-muted">
+                                    <span>Response loaded</span>
+                                    <span>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Section 2: Real-time Study Weakness Finder */}
+                        <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
+                          <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0 justify-between">
+                            <div className="flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4 text-accent" />
+                              <span className="text-xs font-bold text-foreground uppercase tracking-wider">Weakness Scanner</span>
+                            </div>
+                            <button
+                              onClick={handleRunGapAnalysis}
+                              disabled={documentLoading || !selectedBinderId}
+                              className="px-3 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10.5px] font-bold disabled:opacity-50 transition"
+                            >
+                              Scan
+                            </button>
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto p-4 space-y-3 select-text">
+                            {gapAnalysis ? (
+                              <div className="space-y-4">
+                                <div className="bg-input border border-border rounded-xl p-3.5 space-y-2 shadow-inner">
+                                  <div className="flex items-center gap-1.5 text-accent text-xs font-bold">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <span>WEAKNESSES DETECTED</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+                                    <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                                      {gapAnalysis}
+                                    </ReactMarkdown>
+                                  </div>
+                                </div>
+
+                                {suggestedPathways.length > 0 && (
+                                  <div className="space-y-2">
+                                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest pl-1">Suggested Pathways</span>
+                                    <div className="grid grid-cols-1 gap-2">
+                                      {suggestedPathways.map((path, idx) => (
+                                        <div key={idx} className="flex gap-2 p-2.5 bg-input border border-border rounded-xl text-xs text-foreground font-semibold items-start">
+                                          <Check className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                          <span>{path}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="h-full flex flex-col justify-center items-center text-center p-4 gap-2 py-10">
+                                <TrendingUp className="h-8 w-8 text-muted/50" />
+                                <span className="text-xs font-bold text-foreground">No weaknesses scanned yet</span>
+                                <p className="text-xs text-muted leading-relaxed max-w-[200px]">
+                                  Take a Practice Mock Exam or run a Scan to identify conceptual gaps.
+                                </p>
                               </div>
                             )}
                           </div>
-
-                          {/* Message Bubble Column */}
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className={`flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                              <span className="text-[10px] font-bold text-foreground">
-                                {isUser ? 'You' : 'Zenith AI'}
-                              </span>
-                              
-                              {/* Controls */}
-                              {!isUser && msg.content && !msg.content.startsWith('⚠️') && (
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    onClick={() => {
-                                      handleOpenInlineCardModal(msg.content);
-                                    }}
-                                    className="text-[9px] text-accent hover:underline font-semibold transition flex items-center gap-0.5 animate-pulse"
-                                    title="Create Flashcard"
-                                  >
-                                    <Sparkles className="h-2.5 w-2.5" />
-                                    <span>Create Card</span>
-                                  </button>
-                                  <span className="text-muted/40 text-[9px]">•</span>
-                                  <button
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(msg.content);
-                                      playSoundEffect('click');
-                                      showToast('Message copied to clipboard!', 'success');
-                                    }}
-                                    className="text-[9px] text-muted hover:text-foreground font-semibold transition flex items-center gap-0.5"
-                                    title="Copy response"
-                                  >
-                                    <Copy className="h-2.5 w-2.5" />
-                                    <span>Copy</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Bubbly Card */}
-                            <div
-                              className={`p-4 rounded-2xl shadow-md border transition-all duration-300 ${
-                                isUser
-                                  ? 'bg-primary/10 border-primary/20 rounded-tr-none text-foreground'
-                                  : 'bg-secondary/70 border-border rounded-tl-none text-foreground'
-                              }`}
-                            >
-                              {/* Display thinking state / agent thoughts */}
-                              {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
-                                <div className="mb-3 p-2.5 bg-input/40 border-l-2 border-primary rounded-r-lg space-y-1 animate-scale-in text-[10.5px]">
-                                  <div className="flex items-center gap-1 font-bold text-primary uppercase text-[8.5px] tracking-wider select-none">
-                                    <Brain className="h-3 w-3 animate-pulse text-accent" />
-                                    <span>Thought Process</span>
-                                  </div>
-                                  <ul className="list-disc list-inside space-y-0.5 text-muted leading-relaxed font-sans">
-                                    {msg.thoughts.map((th, i) => (
-                                      <li key={i}>{th}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              <div className="space-y-4 w-full text-left">
-                                {parseMessageArtifacts(msg.content).map((part, pIdx) => {
-                                  if (part.type === 'artifact') {
-                                    return (
-                                      <SafeErrorBoundary key={pIdx}>
-                                        {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
-                                      </SafeErrorBoundary>
-                                    );
-                                  }
-                                  
-                                  return (
-                                    <div key={pIdx} className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
-                                      <SafeErrorBoundary>
-                                        <ReactMarkdown
-                                          components={renderMarkdownComponents}
-                                          remarkPlugins={[remarkMath]}
-                                          rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-                                        >
-                                          {part.content || ''}
-                                        </ReactMarkdown>
-                                      </SafeErrorBoundary>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
                         </div>
-                      );
-                    })}
-                    <div ref={chatEndRef} />
-                  </div>
-                )}
+
+                      </div>
+                    </div>
+                  )}
+                </SandboxedApp>
               </div>
-
-              {/* Chat Error Boundaries */}
-              {chatError && (
-                <div className="bg-red-950/20 border border-red-900/35 text-red-300 p-2.5 rounded-lg text-xs mb-3 flex items-center gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
-                  <span>{chatError}</span>
-                </div>
-              )}
-
-              {/* Chat Input Area Controls */}
-              <form onSubmit={handleChatSubmit} className="mt-auto flex-shrink-0 space-y-2">
-                {/* Minimalist prompt templates (Only shown when message list is empty) */}
-                {chatMessages.length === 0 && (
-                  <div className="flex flex-wrap gap-1.5 justify-center mb-1">
-                    {[
-                      { label: "Step-by-Step", text: "Summarize the key core concepts of this binder in a clear markdown bullet list with code examples." },
-                      { label: "Concept Map", text: "Create a glossary of the top 10 key terms and definitions found inside this binder." },
-                      { label: "Translate", text: "Translate the main concepts of this binder into clear study summaries." }
-                    ].map((chip, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setChatInput(chip.text);
-                          playSoundEffect('click');
-                        }}
-                        className="px-2.5 py-1 bg-secondary/40 hover:bg-secondary border border-border/45 text-[10px] text-muted hover:text-foreground rounded-lg transition font-semibold"
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Input Bar Capsule */}
-                <div className="bg-secondary/40 border border-border/45 rounded-2xl p-1.5 flex items-center gap-2 shadow-lg backdrop-blur-md">
-                  {/* Web Search Toggle */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWebSearchActive(!webSearchActive);
-                      playSoundEffect('click');
-                    }}
-                    title="Toggle Web Search"
-                    className={`p-2 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                      webSearchActive
-                        ? 'bg-primary/10 text-primary border border-primary/20 shadow-glow'
-                        : 'text-muted hover:text-foreground border border-transparent hover:bg-input/30'
-                    }`}
-                  >
-                    <Globe className="h-4 w-4" />
-                  </button>
-
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder={chatStreaming ? 'Zenith AI is thinking...' : 'Ask Zenith AI...'}
-                    disabled={chatStreaming}
-                    className="flex-1 bg-transparent border-0 outline-none focus:outline-none text-xs text-foreground placeholder-muted font-medium px-2"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={chatStreaming || !chatInput.trim()}
-                    className="p-2.5 bg-primary text-primary-foreground hover:opacity-95 rounded-xl font-bold transition disabled:opacity-40 shadow flex items-center justify-center"
-                  >
-                    {chatStreaming ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </form>
-
             </div>
-          </div>
-        )}
+          )}
         </main>
 
         {/* ======================================================== */}
-        {/* COLUMN 3: RIGHT SIDEBAR (Stats, Gaps, History, Viewer)  */}
+        {/* COLUMN 3: RIGHT SIDEBAR (The Oracle - AI Chat Feed)     */}
         {/* ======================================================== */}
-        <aside className={`fixed inset-y-0 right-0 w-full md:w-[460px] bg-secondary border-l border-border flex flex-col transform transition-transform duration-300 lg:relative lg:translate-x-0 ${
-          tourStep === 4 ? 'z-[9991] translate-x-0' : 'z-50'
-        } ${rightSidebarOpen ? 'translate-x-0 lg:w-[460px] lg:border-l' : 'translate-x-full lg:translate-x-0 lg:w-0 lg:border-l-0 lg:overflow-hidden'}`}>
+        <aside className={`inset-y-0 right-0 bg-secondary border-border flex flex-col transition-all duration-300 ease-out z-10 ${
+          mobileTab === 'chat' ? 'flex fixed w-full' : 'hidden lg:flex lg:relative'
+        } ${
+          rightSidebarOpen ? 'lg:w-[460px] xl:w-[500px] lg:border-l' : 'lg:w-0 lg:overflow-hidden lg:border-l-0'
+        }`}>
           
-          {/* Header tabs toggle */}
-          <div className="border-b border-border bg-input/20 flex items-center justify-between flex-shrink-0 pr-2">
-            <div 
-              id="tour-step-tools"
-              className={`flex-1 flex overflow-x-auto scrollbar-none whitespace-nowrap gap-1 p-2 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
+          {/* Header of Oracle Chat */}
+          <div className="p-4 border-b border-border flex justify-between items-center bg-input/10 flex-shrink-0 pr-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4.5 w-4.5 text-primary animate-pulse" />
+              <span className="text-xs font-extrabold text-foreground uppercase tracking-wider">Zenith AI Oracle</span>
+            </div>
+            
+            <button
+              onClick={() => {
+                if (window.innerWidth < 1024) {
+                  setMobileTab('workbench');
+                } else {
+                  setRightSidebarOpen(false);
+                }
+                playSoundEffect('click');
+              }}
+              className="p-1.5 hover:bg-input border border-border rounded text-muted hover:text-foreground transition"
+              title="Close Chat"
             >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Active Context Banner */}
+          {selectedBinderId && (
+            <div className="flex-shrink-0 bg-secondary/30 border-b border-border/40 px-4 py-2.5 flex items-center justify-between gap-2.5 backdrop-blur-md">
+              <div className="flex items-center gap-2 text-[10.5px]">
+                <div className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </div>
+                <span className="text-muted truncate max-w-[220px]">
+                  Context: <strong className="text-foreground font-semibold">{binders.find(b => b.id === selectedBinderId)?.name}</strong>
+                </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                <span>Zenith Online</span>
+              </div>
+            </div>
+          )}
+
+          {/* Chat Feed Messages Area */}
+          <div 
+            className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 scrollbar-none relative animate-all duration-300"
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onDrop={handleDrop}
+          >
+            {dragActive && (
+              <div className="absolute inset-0 z-50 bg-secondary/90 backdrop-blur-md flex flex-col justify-center items-center text-center p-6 border-2 border-dashed border-primary/50 m-2 rounded-2xl animate-fade-in pointer-events-none">
+                <Upload className="h-10 w-10 text-primary mb-3 animate-bounce" />
+                <h3 className="text-xs font-bold text-foreground">Drop Context Files to Ingest</h3>
+                <p className="text-[10px] text-muted max-w-[220px] mt-1">
+                  Ingest PDFs, text documents, or code files directly into your active Study Chat.
+                </p>
+              </div>
+            )}
+
+            {chatMessages.length === 0 ? (
+              <div className="h-full flex flex-col justify-center items-center text-center p-6 gap-3">
+                <Sparkles className="h-8 w-8 text-primary/45 animate-spin" style={{ animationDuration: '3s' }} />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">StudySphere Chat</h3>
+                <p className="text-[11px] text-muted max-w-[250px] leading-relaxed">
+                  Ask Zenith AI questions. Upload documents or click any action below to trigger analysis.
+                </p>
+                
+                <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-[280px]">
+                  {[
+                    { label: "Summarize concepts", text: "Summarize the key core concepts of this binder in a clear markdown bullet list." },
+                    { label: "Draft review syllabus", text: "Suggest a 5-day structured study syllabus based on these notes." },
+                    { label: "Find conceptual gaps", text: "Scan my notes to find conceptual gaps and weaknesses." }
+                  ].map((chip, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setChatInput(chip.text);
+                        playSoundEffect('click');
+                      }}
+                      className="p-3 bg-input/40 border border-border hover:border-primary/40 hover:bg-secondary rounded-xl text-left text-[11px] text-muted hover:text-foreground transition flex flex-col gap-0.5 shadow-sm"
+                    >
+                      <span className="font-semibold text-foreground">{chip.label}</span>
+                      <span className="text-[9.5px] text-muted-foreground leading-tight truncate">{chip.text}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 py-2">
+                {chatMessages.map((msg, index) => {
+                  const isUser = msg.role === 'user';
+                  const isSystem = msg.role === 'system';
+                  
+                  if (isSystem) {
+                    return (
+                      <div key={index} className="flex justify-center my-2 animate-fade-in-up">
+                        <div className="bg-primary/5 border border-primary/10 rounded-xl px-3 py-1.5 text-[10px] text-primary flex items-center gap-1.5 shadow-sm max-w-[90%] text-center">
+                          <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span>{msg.content}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex gap-2.5 text-xs leading-relaxed animate-fade-in-up ${
+                        isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                      } max-w-[92%]`}
+                    >
+                      {/* Avatar */}
+                      <div className="flex-shrink-0">
+                        {isUser ? (
+                          user?.picture ? (
+                            <img src={user.picture} alt="User" className="w-8 h-8 rounded-full border border-primary/20 shadow-sm" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-primary/25 border border-primary/30 flex items-center justify-center font-bold text-primary shadow-sm text-xs">
+                              {user?.name ? user.name[0].toUpperCase() : 'U'}
+                            </div>
+                          )
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-extrabold text-primary-foreground shadow shadow-primary/20 text-xs select-none">
+                            Z
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Message Bubble Column */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className={`flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                          <span className="text-[10px] font-bold text-foreground">
+                            {isUser ? 'You' : 'Zenith AI'}
+                          </span>
+                          {!isUser && (
+                            <span className="text-[8.5px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-full flex items-center gap-0.5 shadow-glow-sm select-none">
+                              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                              99.4% trust
+                            </span>
+                          )}
+                          {!isUser && msg.content && (
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <button
+                                onClick={() => handleOpenInlineCardModal(msg.content)}
+                                className="text-[9px] text-accent hover:underline font-semibold transition"
+                              >
+                                Create Card
+                              </button>
+                              <span className="text-muted/40 text-[9px]">•</span>
+                              <button
+                                onClick={() => handleStartRefinement(index)}
+                                className="text-[9px] text-primary hover:underline font-semibold transition animate-fade-in"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bubbly Card */}
+                        <div
+                          className={`p-3.5 rounded-2xl border transition-all duration-300 ${
+                            isUser
+                              ? 'bg-primary/10 border-primary/20 rounded-tr-none text-foreground'
+                              : 'bg-secondary/70 border-border rounded-tl-none text-foreground'
+                          }`}
+                        >
+                          {/* Inline Edit/Refinement Form */}
+                          {!isUser && msg.isEditing ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={msg.content}
+                                onChange={(e) => handleUpdateMessageContent(index, e.target.value)}
+                                className="w-full bg-input border border-border rounded-lg p-2 text-xs text-foreground focus:outline-none"
+                                rows={4}
+                              />
+                              <div className="flex justify-end gap-1.5 text-[9px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelRefinement(index)}
+                                  className="px-2 py-1 text-muted hover:text-foreground transition"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveRefinement(index)}
+                                  className="px-2.5 py-1 bg-primary text-primary-foreground rounded-md font-semibold transition"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 w-full text-left select-text">
+                              {/* Thoughts display */}
+                              {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
+                                <ModelThoughtsAccordion thoughts={msg.thoughts} isStreaming={chatStreaming && index === chatMessages.length - 1} />
+                              )}
+
+                              {parseMessageArtifacts(msg.content).map((part, pIdx) => {
+                                if (part.type === 'artifact') {
+                                  return (
+                                    <SafeErrorBoundary key={pIdx}>
+                                      {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
+                                    </SafeErrorBoundary>
+                                  );
+                                }
+                                
+                                return (
+                                  <div key={pIdx} className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
+                                    <SafeErrorBoundary>
+                                      <ReactMarkdown
+                                        components={renderMarkdownComponents}
+                                        remarkPlugins={[remarkMath]}
+                                        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+                                      >
+                                        {part.content || ''}
+                                      </ReactMarkdown>
+                                    </SafeErrorBoundary>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Chat error block */}
+          {chatError && (
+            <div className="mx-4 my-2 bg-red-950/20 border border-red-900/35 text-red-300 p-2.5 rounded-lg text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+              <span className="truncate">{chatError}</span>
+            </div>
+          )}
+
+          {/* Chat input controls */}
+          <form onSubmit={handleChatSubmit} className="p-3 bg-secondary/80 border-t border-border flex-shrink-0 space-y-2">
+            
+            {/* Quick Actions Shortcuts Toolbar */}
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1.5">
               {[
-                { id: 'viewer', label: 'Reader', icon: FileText },
-                { id: 'guide', label: 'Syllabus', icon: BookMarked },
-                { id: 'podcast', label: 'Audio Review', icon: SpeakerIcon },
-                { id: 'srs', label: 'Study Cards', icon: Layers },
-                { id: 'quiz', label: 'Practice Exam', icon: Award },
-                { id: 'gaps', label: 'Weaknesses', icon: TrendingUp },
-              ].map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeRightTab === tab.id;
+                { label: "Practice Quiz", prompt: "Generate a custom quiz based on this binder's documents.", icon: Award, type: "quiz" },
+                { label: "Recall Cards", prompt: "Generate a set of active recall study flashcards.", icon: Layers, type: "srs" },
+                { label: "Audio Briefing", prompt: "Create an audio study podcast discussing the core material.", icon: Headphones, type: "podcast" },
+                { label: "Study Syllabus", prompt: "Design a comprehensive study syllabus covering this topic.", icon: BookMarked, type: "guide" },
+                { label: "Weakness Finder", prompt: "Scan my notes to find conceptual gaps and weaknesses.", icon: TrendingUp, type: "gaps" }
+              ].map((act) => {
+                const Icon = act.icon;
                 return (
                   <button
-                    key={tab.id}
-                    onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
-                    className={`flex-1 flex-shrink-0 min-w-[62px] flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
-                      isActive
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted hover:bg-input hover:text-foreground'
-                    }`}
+                    key={act.label}
+                    type="button"
+                    onClick={() => {
+                      setChatInput(act.prompt);
+                      setActiveRightTab(act.type as any);
+                      playSoundEffect('click');
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-input/40 border border-border/60 hover:bg-input text-[9.5px] font-bold text-muted hover:text-foreground rounded-lg transition whitespace-nowrap"
                   >
-                    <Icon className="h-3 w-3" />
-                    <span>{tab.label}</span>
+                    <Icon className="h-3 w-3 text-primary" />
+                    <span>{act.label}</span>
                   </button>
                 );
               })}
             </div>
-            
-            {/* Close side panel button pinned to the right */}
-            <button
-              onClick={() => setRightSidebarOpen(false)}
-              className="px-2 py-2 text-muted hover:text-foreground transition flex-shrink-0 ml-1 animate-fade-in border-l border-border/20"
-              title="Close panel"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
 
-          <div className="flex-1 overflow-y-auto flex flex-col">
-            {/* 1. Document Reader */}
-            {activeRightTab === 'viewer' && (
-              <div className="flex-1 flex flex-col min-h-0 bg-input/5 animate-fade-in">
-                <div className="p-3 border-b border-border bg-input/10 flex items-center justify-between flex-shrink-0">
-                  <span className="text-[11px] font-bold text-foreground truncate max-w-[280px]">
-                    {selectedDocumentName || 'Source Document'}
-                  </span>
-                  {selectedDocumentText && (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedDocumentText);
-                        playSoundEffect('correct');
-                        showToast('Copied document text to clipboard!', 'success');
-                      }}
-                      className="text-[9px] px-2 py-0.5 bg-input border border-border hover:bg-secondary text-foreground rounded font-semibold"
-                    >
-                      Copy All
-                    </button>
-                  )}
-                </div>
+            <div className="bg-input/40 border border-border rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
+              {/* Paperclip upload button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                title="Upload PDF, text, or code files"
+                disabled={chatStreaming}
+                className="p-2 text-muted hover:text-foreground hover:bg-input rounded-lg transition flex items-center justify-center flex-shrink-0"
+              >
+                <Paperclip className="h-4 w-4 text-primary" />
+              </button>
+              <input
+                type="file"
+                multiple
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-xs text-foreground leading-relaxed whitespace-pre-wrap selection:bg-primary/20">
-                  {documentLoading ? (
-                    <div className="flex flex-col justify-center items-center py-24 gap-3 text-muted">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      <span className="text-xs uppercase tracking-widest font-semibold">Extracting text layout...</span>
-                    </div>
-                  ) : selectedDocumentText ? (
-                    <div className="p-3 bg-input border border-border rounded-xl font-mono text-[10.5px] max-h-[70vh] overflow-y-auto leading-normal">
-                      {selectedDocumentText}
-                    </div>
-                  ) : (
-                    <div className="text-center py-20 text-muted space-y-2 px-4">
-                      <FileText className="h-7 w-7 text-muted mx-auto" />
-                      <p className="text-[10.5px]">Select the preview icon next to any document in the sidebar to review its text chunks.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={chatStreaming ? 'Zenith AI is thinking...' : 'Ask Zenith AI...'}
+                disabled={chatStreaming}
+                className="flex-1 bg-transparent border-0 outline-none focus:outline-none text-xs text-foreground placeholder-muted font-medium px-2.5"
+              />
 
-            {/* 2. Study Guide */}
-            {activeRightTab === 'guide' && (
-              <div className="p-4 space-y-4 animate-fade-in">
-                <div className="flex justify-between items-center border-b border-border pb-2">
-                  <span className="text-[11px] font-bold text-foreground">Binder Study Guide</span>
-                  {selectedBinderId && documents.length > 0 && (
-                    <button
-                      onClick={handleGenerateStudyGuide}
-                      disabled={sourceGuideLoading}
-                      className="px-2.5 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10px] font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1"
-                    >
-                      {sourceGuideLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      Generate
-                    </button>
-                  )}
-                </div>
-
-                {!selectedBinderId ? (
-                  <div className="text-center py-12 bg-secondary border border-border rounded-xl">
-                    <span className="text-[10px] text-muted">Select a Document Binder in the sidebar to compile guides.</span>
-                  </div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-12 bg-secondary border border-border rounded-xl space-y-1">
-                    <FileText className="h-6 w-6 text-muted mx-auto" />
-                    <p className="text-[10px] text-muted">No documents in binder.</p>
-                  </div>
-                ) : sourceGuideLoading ? (
-                  <div className="flex flex-col justify-center items-center py-16 gap-2 bg-secondary/35 border border-border rounded-xl">
-                    <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                    <span className="text-xs text-foreground font-semibold">Analyzing binder files...</span>
-                    <span className="text-[10px] text-muted text-center max-w-[200px]">Structuring notes, glossaries, FAQs, and key takeaways</span>
-                  </div>
-                ) : sourceGuideText ? (
-                  <div className="space-y-3 animate-fade-in-up">
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(sourceGuideText);
-                          playSoundEffect('correct');
-                          showToast('Copied study guide to clipboard!', 'success');
-                        }}
-                        className="px-2 py-0.5 bg-input border border-border hover:bg-secondary text-[9px] text-foreground rounded flex items-center gap-1 font-semibold"
-                      >
-                        <Copy className="h-3 w-3" />
-                        <span>Copy Markdown</span>
-                      </button>
-                    </div>
-                    <div className="glass-panel p-4 rounded-xl shadow-md academic-prose text-xs max-h-[70vh] overflow-y-auto bg-input/40 border border-border">
-                      <SafeErrorBoundary>
-                        <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                          {sourceGuideText}
-                        </ReactMarkdown>
-                      </SafeErrorBoundary>
-                    </div>
-                  </div>
+              <button
+                type="submit"
+                disabled={chatStreaming || !chatInput.trim()}
+                className="p-2 bg-primary text-primary-foreground hover:opacity-95 rounded-xl font-bold transition disabled:opacity-40 shadow flex items-center justify-center flex-shrink-0"
+              >
+                {chatStreaming ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <div className="text-center py-16 bg-secondary/50 border border-border rounded-xl space-y-2">
-                    <BookMarked className="h-6 w-6 text-primary/45 mx-auto animate-pulse" />
-                    <p className="text-[10px] text-muted max-w-[200px] mx-auto">
-                      Generate core concept reviews, FAQs, and terminology glossaries from all files in this binder.
-                    </p>
-                  </div>
+                  <Send className="h-3.5 w-3.5" />
                 )}
-              </div>
-            )}
-
-            {/* 3. AI Podcast */}
-            {activeRightTab === 'podcast' && (
-              <div className="p-4 space-y-4 animate-fade-in">
-                <div className="flex justify-between items-center border-b border-border pb-2">
-                  <span className="text-[11px] font-bold text-foreground">AI Audio overview</span>
-                  {selectedBinderId && documents.length > 0 && (
-                    <button
-                      onClick={handleGeneratePodcast}
-                      disabled={podcastLoading}
-                      className="px-2.5 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10px] font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1"
-                    >
-                      {podcastLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                      Generate
-                    </button>
-                  )}
-                </div>
-
-                {!selectedBinderId ? (
-                  <div className="text-center py-12 bg-secondary border border-border rounded-xl">
-                    <span className="text-[10px] text-muted">Select a Document Binder to generate podcasts.</span>
-                  </div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-12 bg-secondary border border-border rounded-xl">
-                    <span className="text-[10px] text-muted">No documents found in binder.</span>
-                  </div>
-                ) : podcastLoading ? (
-                  <div className="flex flex-col justify-center items-center py-16 gap-2 bg-secondary/35 border border-border rounded-xl">
-                    <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                    <span className="text-xs text-foreground font-semibold">Compiling podcast overview...</span>
-                    <span className="text-[10px] text-muted font-sans">Alex and Taylor are writing the dialogue script</span>
-                  </div>
-                ) : podcastTurns.length > 0 ? (
-                  <div className="space-y-4 animate-fade-in-up">
-                    {/* Cassette Disc Visualizer Widget */}
-                    <div className="flex flex-col items-center justify-center p-4 bg-secondary border border-border rounded-xl space-y-3 shadow-md">
-                      <div className="relative w-28 h-28 bg-input border border-border rounded-full flex items-center justify-center shadow-inner">
-                        <div className={`w-24 h-24 border-2 border-dashed border-primary/30 rounded-full flex items-center justify-center ${podcastPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '10s' }}>
-                          <div className="w-10 h-10 bg-secondary border border-border rounded-full"></div>
-                        </div>
-                        <span className="absolute text-[8.5px] font-bold text-foreground">Alex & Taylor</span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {podcastPlaying ? (
-                          <button
-                            onClick={pausePodcastPlayback}
-                            className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 shadow-sm"
-                          >
-                            <Pause className="h-4 w-4" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={startPodcastPlayback}
-                            className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 shadow-sm"
-                          >
-                            <Play className="h-4 w-4 fill-current" />
-                          </button>
-                        )}
-                        <select
-                          value={podcastSpeed}
-                          onChange={(e) => {
-                            setPodcastSpeed(Number(e.target.value));
-                            if (podcastPlaying) speakDialogue(activePodcastIndex);
-                          }}
-                          className="bg-input border border-border rounded px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none"
-                        >
-                          <option value={0.85}>0.85x</option>
-                          <option value={1}>1.0x</option>
-                          <option value={1.2}>1.2x</option>
-                          <option value={1.5}>1.5x</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Scrolling Dialogue Script Container */}
-                    <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-                      {podcastTurns.map((turn, idx) => {
-                        const isActive = idx === activePodcastIndex;
-                        return (
-                          <div
-                            key={idx}
-                            id={`podcast-turn-${idx}`}
-                            onClick={() => {
-                              speakDialogue(idx);
-                              if (!podcastPlaying) setPodcastPlaying(true);
-                            }}
-                            className={`p-2.5 border rounded-lg cursor-pointer text-[11px] transition-all ${
-                              isActive
-                                ? 'bg-primary/15 border-primary shadow-sm scale-[1.01]'
-                                : 'bg-input/60 border-border hover:border-muted-foreground/20 text-muted hover:text-foreground'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className={`font-bold uppercase tracking-wider text-[8px] ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
-                                {turn.speaker}
-                              </span>
-                            </div>
-                            <p className="leading-relaxed font-sans">{turn.text}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-16 bg-secondary/50 border border-border rounded-xl space-y-2">
-                    <SpeakerIcon className="h-6 w-6 text-primary/45 mx-auto animate-pulse" />
-                    <p className="text-[10px] text-muted max-w-[200px] mx-auto">
-                      Generate a text-to-speech discussion overview of your binder files.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 4. Smart Flashcards (SRS) */}
-            {activeRightTab === 'srs' && (
-              <div className="p-4 flex-1 flex flex-col min-h-0 animate-fade-in">
-                <div className="border-b border-border pb-2 mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-foreground">Flashcards Deck</span>
-                  <span className="text-[9px] font-semibold bg-input border border-border px-2 py-0.5 rounded text-muted">
-                    {dueCardsCount} due
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <FlashcardSRS soundOn={soundOn} binderId={selectedBinderId} />
-                </div>
-              </div>
-            )}
-
-            {/* 5. Practice Exams */}
-            {activeRightTab === 'quiz' && (
-              <div className="p-4 flex-1 flex flex-col min-h-0 animate-fade-in">
-                <div className="border-b border-border pb-2 mb-2">
-                  <span className="text-[11px] font-bold text-foreground">Practice Mock Exam</span>
-                </div>
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <MockExamEngine onGradeCompleted={handleExamGradeCompleted} />
-                </div>
-              </div>
-            )}
-
-            {/* 6. Stats & Gaps */}
-            {activeRightTab === 'gaps' && (
-              <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
-                {/* Section 1: History Log */}
-                <div className="p-3 border-b border-border bg-input/10 flex items-center gap-1.5 flex-shrink-0">
-                  <History className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-[9.5px] font-bold text-muted uppercase tracking-widest">Study History Log</span>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-[30vh] border-b border-border">
-                  {studyHistory.length === 0 ? (
-                    <div className="text-center py-6 text-[10.5px] text-muted">No query history found. Try asking a question!</div>
-                  ) : (
-                    studyHistory.map(item => (
-                      <div
-                        key={item.id}
-                        onClick={() => handleLoadHistoryItem(item)}
-                        className="p-2 border border-border bg-input/30 hover:border-primary/40 hover:bg-input cursor-pointer transition text-left space-y-1 rounded-lg"
-                      >
-                        <p className="text-[9.5px] font-semibold text-foreground truncate">{item.query}</p>
-                        <div className="flex justify-between items-center text-[8.5px] text-muted">
-                          <span>Response loaded</span>
-                          <span>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Section 2: Real-time Study Weakness Finder */}
-                <div className="p-3 border-b border-border bg-input/10 flex items-center gap-1.5 flex-shrink-0">
-                  <TrendingUp className="h-3.5 w-3.5 text-accent" />
-                  <span className="text-[9.5px] font-bold text-muted uppercase tracking-widest">Study Weakness Finder</span>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-input/5">
-                  {gapAnalysis ? (
-                    <div className="space-y-3">
-                      <div className="bg-input border border-border rounded-xl p-3 space-y-2 shadow-inner">
-                        <div className="flex items-center gap-1.5 text-accent">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          <h4 className="text-[9.5px] font-bold uppercase tracking-wider">Weaknesses Detected</h4>
-                        </div>
-                        <div className="text-[10.5px] text-muted leading-relaxed prose prose-invert prose-xs academic-prose">
-                          <SafeErrorBoundary>
-                            <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                              {gapAnalysis}
-                            </ReactMarkdown>
-                          </SafeErrorBoundary>
-                        </div>
-                      </div>
-
-                      {suggestedPathways.length > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[9px] font-bold text-muted uppercase tracking-widest pl-1">Suggested Pathways</span>
-                          <div className="space-y-1">
-                            {suggestedPathways.map((path, idx) => (
-                              <div key={idx} className="flex gap-1.5 p-2 bg-input border border-border rounded-lg text-[10px] text-foreground font-semibold">
-                                <Check className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
-                                <span>{path}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col justify-center items-center text-center p-3 gap-2 py-8">
-                      <TrendingUp className="h-6 w-6 text-muted" />
-                      <span className="text-xs font-bold text-foreground">No weaknesses detected yet</span>
-                      <span className="text-[9.5px] text-muted leading-relaxed max-w-[180px]">
-                        Complete a Mock Exam to run a study weakness finder scan on binder files.
-                      </span>
-                      <button
-                        onClick={() => setActiveRightTab('quiz')}
-                        className="mt-1 px-3 py-1 bg-input border border-border hover:bg-secondary text-primary text-[10px] font-semibold rounded transition"
-                      >
-                        Start Exam
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
+              </button>
+            </div>
+          </form>
         </aside>
 
         {/* Right Sidebar overlay backdrop on mobile screens */}
@@ -4956,169 +4995,7 @@ export default function App() {
         })}
       </div>
 
-      {/* Live Study Assistant Toggle Button */}
-      {user && (
-        <button
-          onClick={() => { setAssistantOpen(!assistantOpen); playSoundEffect('click'); }}
-          className="fixed bottom-6 right-6 z-[49] flex items-center justify-center h-12 w-12 bg-primary text-primary-foreground rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all duration-300 border border-primary/20"
-          title="Toggle Live Study Assistant"
-        >
-          <Sparkles className="h-5 w-5 animate-pulse" />
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-accent"></span>
-          </span>
-        </button>
-      )}
 
-      {/* Live Study Assistant Backdrop Click Mask */}
-      {user && (
-        <div 
-          onClick={() => setAssistantOpen(false)}
-          className={`fixed inset-0 z-[47] bg-black/40 backdrop-blur-[2px] transition-all duration-300 ease-out ${assistantOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-        />
-      )}
-
-      {/* Live Study Assistant Sidebar Overlay Panel */}
-      {user && (
-        <div className={`fixed inset-y-0 right-0 z-[48] w-80 bg-background/95 border-l border-border shadow-2xl flex flex-col backdrop-blur-md transition-transform duration-300 ease-out transform ${assistantOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'}`}>
-          {/* Header */}
-          <div className="p-4 border-b border-border flex items-center justify-between bg-secondary/40">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4.5 w-4.5 text-accent animate-pulse" />
-              <div>
-                <h3 className="text-xs font-bold text-foreground">Live Study Assistant</h3>
-                <span className="text-[9px] text-muted-foreground flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Active Session: {formatStudyTime(sessionStudyTime)}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={() => { setAssistantOpen(false); playSoundEffect('click'); }}
-              className="text-muted hover:text-foreground transition p-1 hover:bg-input rounded-lg"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Context Banner */}
-          <div className="px-4 py-2 bg-input border-b border-border flex flex-col gap-1">
-            <span className="text-[9px] uppercase tracking-wider font-bold text-muted">Screen Context Status</span>
-            <span className="text-[10px] text-foreground font-medium truncate">
-              {selectedDocumentName ? `📄 Reading File: ${selectedDocumentName}` : sourceGuideText ? `📖 Reading active Study Guide` : `📁 Reading Binder Files`}
-            </span>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none">
-            {assistantMessages.map((msg, idx) => {
-              const isUser = msg.role === 'user';
-              return (
-                <div
-                  key={idx}
-                  className={`p-3.5 rounded-2xl border text-xs max-w-[85%] leading-relaxed shadow-sm transition-all duration-300 ${
-                    isUser
-                      ? 'ml-auto bg-primary/15 border-primary/25 rounded-tr-none text-foreground'
-                      : 'mr-auto bg-secondary/60 border-border rounded-tl-none text-foreground'
-                  }`}
-                >
-                  {/* Model Thoughts Accordion in Assistant Overlay */}
-                  {!isUser && msg.thoughts && (
-                    <ModelThoughtsAccordion 
-                      thoughts={msg.thoughts} 
-                      isStreaming={assistantLoading && idx === assistantMessages.length - 1} 
-                    />
-                  )}
-
-                  <div className="space-y-3 w-full">
-                    {isUser ? (
-                      <p className="whitespace-pre-wrap text-[11px]">{msg.content}</p>
-                    ) : msg.content ? (
-                      parseMessageArtifacts(msg.content).map((part, pIdx) => {
-                        if (part.type === 'artifact') {
-                          return (
-                            <SafeErrorBoundary key={pIdx}>
-                              {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
-                            </SafeErrorBoundary>
-                          );
-                        }
-                        
-                        return (
-                          <div key={pIdx} className="prose max-w-none chat-prose text-xs text-foreground">
-                            <SafeErrorBoundary>
-                              <ReactMarkdown
-                                components={renderMarkdownComponents}
-                                remarkPlugins={[remarkMath]}
-                                rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-                              >
-                                {part.content || ''}
-                              </ReactMarkdown>
-                            </SafeErrorBoundary>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="flex items-center gap-1.5 py-1">
-                        <span className="thinking-dot"></span>
-                        <span className="thinking-dot"></span>
-                        <span className="thinking-dot"></span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Input Area */}
-          <form onSubmit={handleAssistantQuery} className="p-3 border-t border-border bg-secondary/30 flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setWebSearchActive(!webSearchActive);
-                  playSoundEffect('click');
-                }}
-                className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all duration-200 hover:scale-105 active:scale-95 ${
-                  webSearchActive
-                    ? 'bg-accent/15 border-accent/40 text-accent shadow-sm'
-                    : 'bg-input border-border text-muted hover:border-border-hover'
-                }`}
-              >
-                <Globe className="h-3 w-3" />
-                <span>Web Search</span>
-                {webSearchActive && <span className="w-1.5 h-1.5 bg-accent rounded-full animate-ping"></span>}
-              </button>
-              
-              {selectedBinderId && (
-                <span className="text-[10px] text-primary font-bold flex items-center gap-1">
-                  <BookMarked className="h-3.5 w-3.5 text-primary" />
-                  <span>RAG Retrieval Active</span>
-                </span>
-              )}
-            </div>
-
-            <div className="flex gap-1.5 bg-input border border-border rounded-xl p-1.5 items-center">
-              <input
-                type="text"
-                value={assistantInput}
-                onChange={(e) => setAssistantInput(e.target.value)}
-                placeholder="Ask about active notes..."
-                className="flex-1 bg-transparent text-xs text-foreground focus:outline-none px-1.5 py-1"
-                required
-              />
-              <button
-                type="submit"
-                disabled={assistantLoading || !assistantInput.trim()}
-                className="p-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg transition"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
     </div>
   );

@@ -42,8 +42,8 @@ router.post('/stream', async (req, res) => {
 The user's current local date and time is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
 Always answer questions, analyze schedules, generate exams, and formulate queries under the assumption that the current year is ${localYear}.
 
-You are the Zenith AI Interactive Assistant.
-You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies.
+You are Zenith AI, a world-class interactive study assistant operating on StudySphere.
+You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies on StudySphere.
 
 [HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
 You operate in High-Fidelity Retrieval mode. When answering questions based on the uploaded documents or web search results:
@@ -114,7 +114,19 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
         // 1. Web Search Phase (if enabled)
         let webSearchContextText = '';
         let scrapedPageContextText = '';
-        if (webSearch) {
+        // Simple classifier to check if the user query is conversational
+        const cleanQuery = userQuery.trim().toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "");
+        const conversationalPhrases = [
+            'hi', 'hello', 'hey', 'yo', 'sup', 'greetings',
+            'thanks', 'thank you', 'ty', 'appreciate it', 'thank you so much',
+            'goodbye', 'bye', 'see ya',
+            'yes', 'no', 'ok', 'okay', 'sure', 'fine', 'awesome', 'great', 'perfect',
+            'who are you', 'what are you', 'how are you', 'whats up'
+        ];
+        const isConversational = conversationalPhrases.includes(cleanQuery) ||
+            (cleanQuery.length <= 4 && /^[a-z]+$/.test(cleanQuery));
+        const shouldSearchWeb = webSearch && !isConversational;
+        if (shouldSearchWeb) {
             res.write(`data: ${JSON.stringify({ thought: `Optimizing search queries for: "${userQuery}"...` })}\n\n`);
             let searchQueries = [userQuery];
             try {
@@ -346,20 +358,18 @@ ${userQuery}
         });
         // Record token usage
         await (0, study_1.recordTokenUsage)(userId, 'gemini-3.1-flash-lite', streamResult.usage, 'Study Chat');
-        // Save study history record at the end of the streaming response (skip for guest users)
-        if (!req.user.isGuest) {
-            try {
-                await prisma_1.default.studyHistory.create({
-                    data: {
-                        userId,
-                        query: userQuery,
-                        response: fullGeneratedText,
-                    },
-                });
-            }
-            catch (dbErr) {
-                logger_1.default.error('Failed to save chat stream history: %s', dbErr);
-            }
+        // Save study history record at the end of the streaming response
+        try {
+            await prisma_1.default.studyHistory.create({
+                data: {
+                    userId,
+                    query: userQuery,
+                    response: fullGeneratedText,
+                },
+            });
+        }
+        catch (dbErr) {
+            logger_1.default.error('Failed to save chat stream history: %s', dbErr);
         }
         res.write('data: [DONE]\n\n');
         res.end();

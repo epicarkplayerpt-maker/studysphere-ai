@@ -309,19 +309,14 @@ export const FlashcardSRS: React.FC<FlashcardSRSProps> = ({ soundOn = true, bind
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">Number of Cards to Generate</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={1}
-                  max={50}
-                  value={aiCount}
-                  onChange={(e) => setAiCount(parseInt(e.target.value, 10))}
-                  className="flex-1 accent-primary bg-input"
-                />
-                <span className="text-xs font-bold text-foreground bg-input px-2.5 py-1 rounded border border-border min-w-[50px] text-center">
-                  {aiCount} Cards
-                </span>
-              </div>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={aiCount}
+                onChange={(e) => setAiCount(Math.max(1, Math.min(200, parseInt(e.target.value, 10) || 15)))}
+                className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+              />
             </div>
           </div>
           <div className="flex justify-end gap-2 text-xs pt-2">
