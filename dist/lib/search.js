@@ -6,6 +6,52 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchWeb = searchWeb;
 exports.fetchPageContent = fetchPageContent;
 const logger_1 = __importDefault(require("./logger"));
+const dns_1 = __importDefault(require("dns"));
+const util_1 = require("util");
+const dnsLookup = (0, util_1.promisify)(dns_1.default.lookup);
+function isPrivateIpAddress(ip) {
+    if (/^(127\.|10\.|192\.168\.|169\.254\.)/.test(ip)) {
+        return true;
+    }
+    const parts = ip.split('.');
+    if (parts.length === 4) {
+        const first = parseInt(parts[0], 10);
+        const second = parseInt(parts[1], 10);
+        if (first === 172 && second >= 16 && second <= 31) {
+            return true;
+        }
+        if (first === 0) {
+            return true;
+        }
+    }
+    if (ip === '::1' || ip === '0:0:0:0:0:0:0:1') {
+        return true;
+    }
+    if (ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd00:')) {
+        return true;
+    }
+    return false;
+}
+async function isSafeUrl(urlStr) {
+    try {
+        const parsed = new URL(urlStr);
+        const hostname = parsed.hostname.toLowerCase();
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false;
+        }
+        if (hostname === 'localhost' || hostname === 'loopback') {
+            return false;
+        }
+        const lookupResult = await dnsLookup(hostname).catch(() => null);
+        if (!lookupResult || !lookupResult.address) {
+            return true; // proceed to let normal fetch fail
+        }
+        return !isPrivateIpAddress(lookupResult.address);
+    }
+    catch (e) {
+        return false;
+    }
+}
 /**
  * Searches DuckDuckGo HTML search page and parses the results.
  * This is free, requires no API key, and is fully local.
@@ -329,6 +375,11 @@ async function searchWeb(query) {
  */
 async function fetchPageContent(url) {
     try {
+        const safe = await isSafeUrl(url);
+        if (!safe) {
+            logger_1.default.warn('SSRF Prevention: Blocked fetching private/local URL: %s', url);
+            return '';
+        }
         const response = await fetch(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

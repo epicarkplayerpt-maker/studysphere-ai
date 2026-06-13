@@ -61,6 +61,7 @@ export interface AppState {
   sourceGuideText: string;
   sourceGuideLoading: boolean;
   gapAnalysis: string;
+  weaknessQuestions: any[] | null;
 }
 
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -99,6 +100,7 @@ const initialState: AppState = {
   sourceGuideText: '',
   sourceGuideLoading: false,
   gapAnalysis: '',
+  weaknessQuestions: null,
 };
 
 type Listener = (state: AppState) => void;
@@ -215,6 +217,9 @@ export const dispatchAction = async (action: string, payload: any) => {
       store.setState({ chatMessages: updatedMessages });
       break;
     }
+    case 'SET_WEAKNESS_QUESTIONS':
+      store.setState({ weaknessQuestions: payload });
+      break;
     case 'TRIGGER_AI_SHORTCUT': {
       const { prompt, shortcutType } = payload;
       // Triggers chat query with special preset

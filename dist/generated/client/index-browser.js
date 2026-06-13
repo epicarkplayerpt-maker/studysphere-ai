@@ -202,6 +202,17 @@ exports.Prisma.TokenUsageScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.ReviewScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  name: 'name',
+  role: 'role',
+  text: 'text',
+  rating: 'rating',
+  category: 'category',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -226,7 +237,8 @@ exports.Prisma.ModelName = {
   StudyHistory: 'StudyHistory',
   Flashcard: 'Flashcard',
   DocumentChunk: 'DocumentChunk',
-  TokenUsage: 'TokenUsage'
+  TokenUsage: 'TokenUsage',
+  Review: 'Review'
 };
 
 /**

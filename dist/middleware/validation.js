@@ -71,7 +71,7 @@ exports.generateQuizSchema = zod_1.z.object({
         binderId: zod_1.z.string().uuid('Invalid binder ID format'),
     }),
     body: zod_1.z.object({
-        questionCount: zod_1.z.number().int().min(1).max(20).optional().default(5),
+        questionCount: zod_1.z.number().int().min(1).optional().default(5),
     }),
 });
 exports.gradeQuizSchema = zod_1.z.object({

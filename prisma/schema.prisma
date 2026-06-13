@@ -22,6 +22,7 @@ model User {
   studyHistory       StudyHistory[]
   flashcards         Flashcard[]
   tokenUsages        TokenUsage[]
+  reviews            Review[]
 }
 
 model Session {
@@ -108,4 +109,17 @@ model TokenUsage {
 
   @@index([userId])
 }
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  role      String
+  text      String   @db.Text
+  rating    Int
+  category  String   // e.g. "stem", "humanities", "law"
+  createdAt DateTime @default(now())
+}
+
 

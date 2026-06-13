@@ -31,7 +31,7 @@
     /* Modern Flat Dark Theme (Turbo AI Style) */
     --background: #09090b;
     --foreground: #fafafa;
-    --border: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.02);
     --input: #18181b;
     --ring: #8b5cf6;
     --primary: #ffffff;
@@ -53,7 +53,7 @@
   .theme-claude-light {
     --background: #f8fafc;
     --foreground: #0f172a;
-    --border: rgba(15, 23, 42, 0.08);
+    --border: rgba(15, 23, 42, 0.02);
     --input: #ffffff;
     --ring: #8b5cf6;
     --primary: #0f172a;
@@ -63,7 +63,7 @@
     --accent: #6366f1;
     --muted: #475569;
     --muted-foreground: #64748b;
-    --shadow-color: rgba(15, 23, 42, 0.05);
+    --shadow-color: rgba(15, 23, 42, 0.04);
     --toast-success: #10b981;
     --toast-error: #ef4444;
     --toast-info: #6366f1;
@@ -72,7 +72,7 @@
   .theme-claude-dark {
     --background: #09090b;
     --foreground: #fafafa;
-    --border: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.02);
     --input: #18181b;
     --ring: #8b5cf6;
     --primary: #ffffff;
@@ -123,8 +123,8 @@
   textarea:focus-visible,
   select:focus-visible,
   a:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--ring) !important;
     border-radius: var(--radius);
   }
 
@@ -155,7 +155,7 @@
 .glass-panel {
   background: var(--secondary);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 24px -4px var(--shadow-color);
+  box-shadow: 0 10px 30px -5px var(--shadow-color);
 }
 
 .glass-card {
@@ -165,9 +165,9 @@
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.06);
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px -6px var(--shadow-color);
+  box-shadow: 0 12px 28px -5px var(--shadow-color);
 }
 
 /* Modal Overlay backdrop styling */

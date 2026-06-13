@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Layers,
-  BookOpen,
   Award,
   FileText,
   Trash2,
@@ -41,7 +40,10 @@ import {
   Info,
   Brain,
   Headphones,
-  Languages
+  Languages,
+  Sliders,
+  Lock,
+  Settings
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -51,7 +53,7 @@ import rehypeKatex from 'rehype-katex';
 import { FlashcardSRS } from './components/FlashcardSRS';
 import { MockExamEngine } from './components/MockExamEngine';
 import { MermaidRenderer } from './components/MermaidRenderer';
-import { useAppStore, store } from './store/AppStore';
+import { useAppStore, store, dispatchAction } from './store/AppStore';
 import { VFS } from './services/FileSystemService';
 import { SandboxedApp } from './components/SandboxedApp';
 import { Paperclip } from 'lucide-react';
@@ -697,6 +699,8 @@ interface ArtifactPart {
   artifactType?: string;
   binderId?: string;
   questionCount?: number;
+  docId?: string;
+  docName?: string;
 }
 
 const parseMessageArtifacts = (content: string): ArtifactPart[] => {
@@ -721,16 +725,22 @@ const parseMessageArtifacts = (content: string): ArtifactPart[] => {
     const typeMatch = attrString.match(/type\s*=\s*["']?([^"'\s>]+)["']?/i);
     const binderIdMatch = attrString.match(/binderId\s*=\s*["']?([^"'\s>]+)["']?/i);
     const questionCountMatch = attrString.match(/questionCount\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const docIdMatch = attrString.match(/docId\s*=\s*["']?([^"'\s>]+)["']?/i);
+    const docNameMatch = attrString.match(/docName\s*=\s*["']?([^"'\s>]+)["']?/i);
     
     const artifactType = typeMatch ? typeMatch[1] : '';
     const binderId = binderIdMatch ? binderIdMatch[1] : undefined;
     const questionCount = questionCountMatch ? parseInt(questionCountMatch[1], 10) : undefined;
+    const docId = docIdMatch ? docIdMatch[1] : undefined;
+    const docName = docNameMatch ? docNameMatch[2] || docNameMatch[1] : undefined;
     
     parts.push({
       type: 'artifact',
       artifactType,
       binderId,
-      questionCount
+      questionCount,
+      docId,
+      docName
     });
     
     lastIndex = regex.lastIndex;
@@ -770,6 +780,81 @@ const getFileIconColor = (filename: string): string => {
   }
 };
 
+interface InlineDocumentViewerProps {
+  docId: string;
+  docName: string;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+}
+
+const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({ docId, docName, showToast }) => {
+  const [text, setText] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const fetchText = async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/study/documents/${docId}`, { credentials: 'include' });
+        if (!active) return;
+        if (res.ok) {
+          const data = await res.json();
+          setText(data.document?.content || 'Empty document.');
+        } else {
+          setError('Failed to fetch document content.');
+        }
+      } catch (err) {
+        if (!active) return;
+        setError('Network error fetching document text.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchText();
+    return () => {
+      active = false;
+    };
+  }, [docId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col justify-center items-center py-6 gap-2 text-muted-foreground">
+        <Loader2 className="h-4.5 w-4.5 animate-spin text-primary" />
+        <span className="text-[10px] uppercase tracking-wider font-semibold">Loading document text...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-3 text-red-400 bg-red-950/20 border border-red-900/40 rounded-xl text-xs text-left">
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 text-left">
+      <div className="flex justify-between items-center bg-input/45 p-2 rounded-xl border border-border">
+        <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[200px]">{docName}</span>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(text);
+            showToast('Copied document text!', 'success');
+          }}
+          className="text-[9px] px-2 py-0.5 bg-secondary hover:bg-input border border-border text-foreground rounded font-semibold transition"
+        >
+          Copy Text
+        </button>
+      </div>
+      <div className="p-4 bg-input/20 border border-border rounded-xl font-mono text-xs max-h-[250px] overflow-y-auto leading-normal whitespace-pre-wrap select-text">
+        {text}
+      </div>
+    </div>
+  );
+};
+
 
 export default function App() {
   // Central State Store Selectors
@@ -802,6 +887,18 @@ export default function App() {
   const [customInstructions, setCustomInstructions] = useState<string>('');
   const [showMemoryModal, setShowMemoryModal] = useState<boolean>(false);
   const [savingMemory, setSavingMemory] = useState<boolean>(false);
+
+  // Settings & Reviews States
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [verifiedReviews, setVerifiedReviews] = useState<any[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState<boolean>(true);
+  const [reviewEligibility, setReviewEligibility] = useState<{ eligible: boolean; totalActiveSeconds: number }>({ eligible: false, totalActiveSeconds: 0 });
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+  const [reviewName, setReviewName] = useState<string>('');
+  const [reviewRole, setReviewRole] = useState<string>('');
+  const [reviewCategory, setReviewCategory] = useState<'stem' | 'humanities' | 'law' | 'other'>('stem');
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewText, setReviewText] = useState<string>('');
 
   // Cycling Loader State
   const [loadingStep, setLoadingStep] = useState<number>(0);
@@ -920,6 +1017,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState<boolean>(true);
   const [mobileTab, setMobileTab] = useState<'workbench' | 'chat'>('chat');
+  const [expandedArtifacts, setExpandedArtifacts] = useState<Record<string, boolean>>({});
 
   // Competitor Document Preview & Gaps Tabs
   // Connect tabs, documents, loaders and chat to global store
@@ -947,7 +1045,7 @@ export default function App() {
   // Landing Page Interactive State & Stepper
   const [activeTutorialTab, setActiveTutorialTab] = useState<'ingest' | 'chat' | 'srs' | 'exams'>('ingest');
   const [tutorialStepIndex, setTutorialStepIndex] = useState<number>(0);
-  const [selectedReviewCategory, setSelectedReviewCategory] = useState<'all' | 'stem' | 'humanities' | 'law'>('all');
+  const [selectedReviewCategory, setSelectedReviewCategory] = useState<'all' | 'stem' | 'humanities' | 'law' | 'other'>('all');
 
   // Binder & Documents State
   const binders = useAppStore(s => s.binders);
@@ -961,6 +1059,7 @@ export default function App() {
     const nextVal = typeof val === 'function' ? val(store.getState().selectedBinderId) : val;
     store.setState({ selectedBinderId: nextVal });
   };
+  const selectedBinder = binders.find(b => b.id === selectedBinderId);
 
   const documents = useAppStore(s => s.documents);
   const setDocuments = (val: Document[] | ((prev: Document[]) => Document[])) => {
@@ -1113,39 +1212,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [user, activeTab]);
 
-  // Execute conceptual gap analysis on demand
-  const handleRunGapAnalysis = async () => {
-    if (!selectedBinderId) return;
-    playSoundEffect('click');
-    setDocumentLoading(true);
-    showToast('Scanning binder for conceptual gaps...', 'info');
-    try {
-      const res = await fetch(`/api/study/binders/${selectedBinderId}/gaps`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (res.ok) {
-        const data = await safeParseJson(res);
-        if (data && data.gapAnalysis) {
-          setGapAnalysis(data.gapAnalysis);
-          setSuggestedPathways(data.suggestedPathways || []);
-          setActiveRightTab('gaps');
-          setRightSidebarOpen(true);
-          showToast('Study Weakness Finder scan compiled successfully!', 'success');
-        } else {
-          showToast('Failed to find weaknesses in documents.', 'error');
-        }
-      } else {
-        const errData = await safeParseJson(res);
-        showToast(errData.error || 'Failed to scan binder.', 'error');
-      }
-    } catch (err) {
-      console.error('Error running gap analysis:', err);
-      showToast('Connection failed during analysis scan.', 'error');
-    } finally {
-      setDocumentLoading(false);
-    }
-  };
+
 
   // Guided Tour Onboarding State (6-Step Spotlight Flow)
   const [tourStep, setTourStep] = useState<number | null>(null);
@@ -1267,13 +1334,7 @@ export default function App() {
   const [tutorialCardFlipped, setTutorialCardFlipped] = useState<boolean>(false);
   const [examScoreProgress, setExamScoreProgress] = useState<number>(0);
 
-  // Testimonials Data
-  const testimonials = [
-    { name: 'Marcus Chen', role: 'Computer Science Student', text: 'StudySphere synthesized 12 code repos and explained the whole microservice boundary in seconds. The mind map generation is a lifesaver.', rating: 5, category: 'stem' },
-    { name: 'Dr. Sarah Jenkins', role: 'Medical Resident', text: 'The spaced repetition SM-2 card system is perfect for pharmacology. I just drag in my PDF lectures, and the AI drafts my review schedule automatically.', rating: 5, category: 'stem' },
-    { name: 'Elena Rostova', role: 'Law Student', text: 'Comparing contradictions across 4 files of legal code was impossible before. The cross-reference semantic synthesis cites file names accurately.', rating: 5, category: 'law' },
-    { name: 'David K.', role: 'History Student', text: 'Mock exams draft accurate questions from my syllabus. The conceptual gap analysis points out what I missed so I do not waste time studying what I already know.', rating: 5, category: 'humanities' }
-  ];
+
 
   // Onboarding Step Config
   const tutorialSteps = [
@@ -1371,6 +1432,9 @@ export default function App() {
         if (res.ok) {
           const data = await safeParseJson(res, 'Session verify failed.');
           setUser(data.user);
+          if (data.user) {
+            setReviewName(data.user.name || data.user.email.split('@')[0]);
+          }
         } else {
           // Check if a guest session exists locally and restore it
           const storedGuestId = localStorage.getItem('studysphere_guest_user_id');
@@ -1394,6 +1458,167 @@ export default function App() {
     };
     checkSession();
   }, []);
+
+  const fetchVerifiedReviews = async () => {
+    try {
+      setReviewsLoading(true);
+      const res = await fetch('/api/study/reviews');
+      if (res.ok) {
+        const data = await res.json();
+        setVerifiedReviews(data.reviews || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch reviews:', e);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  const fetchReviewEligibility = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch('/api/study/reviews/eligible');
+      if (res.ok) {
+        const data = await res.json();
+        setReviewEligibility(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch review eligibility:', e);
+    }
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewText.trim() || !reviewName.trim() || !reviewRole.trim()) return;
+    try {
+      setSubmittingReview(true);
+      const res = await fetch('/api/study/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: reviewName,
+          role: reviewRole,
+          category: reviewCategory,
+          rating: reviewRating,
+          text: reviewText
+        })
+      });
+      if (res.ok) {
+        showToast('Review submitted successfully!', 'success');
+        setReviewText('');
+        await fetchVerifiedReviews();
+        await fetchReviewEligibility();
+        playSoundEffect('correct');
+      } else {
+        const err = await safeParseJson(res);
+        showToast(err.error || 'Failed to submit review.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error connecting to review submission endpoint.', 'error');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  // Auto-syllabus and summary generation after upload
+  const handleAutoSyllabusSummary = async (binderId: string, fileName: string) => {
+    try {
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `⚙️ **Zenith Agentic Action**: Ingested \`${fileName}\`. Auto-drafting study syllabus and content briefing summary...`
+      }]);
+
+      const res = await fetch(`/api/study/binders/${binderId}/guide`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.guide) {
+          setSourceGuideText(data.guide);
+          
+          const briefingMatch = data.guide.match(/# Executive Briefing([\s\S]*?)(?=#|$)/i);
+          const summaryContent = briefingMatch 
+            ? briefingMatch[1].trim() 
+            : data.guide.substring(0, 800) + '...';
+
+          setChatMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `### 📚 Document Analysis & Summary for \`${fileName}\`\n\n${summaryContent}\n\n---\n\n#### ⚡ Proposed Next Steps:\n- **Master Study Syllabus**: Synthesized and ready in the **Syllabus** tab.\n- **Adaptive Practice Quiz**: Start a mock exam now to evaluate your knowledge.`
+          }]);
+          showToast('Auto-syllabus & summary generated!', 'success');
+        }
+      }
+    } catch (err) {
+      console.error('Error during auto syllabus generation:', err);
+    }
+  };
+
+  // Autonomous Weakness Finder Scan & Quiz generator
+  const handleRunWeaknessScanner = async () => {
+    if (!selectedBinderId) return;
+    playSoundEffect('click');
+    setDocumentLoading(true);
+    showToast('Analyzing performance metrics & generating custom exam...', 'info');
+    try {
+      const [gapsRes, examRes] = await Promise.all([
+        fetch(`/api/study/binders/${selectedBinderId}/gaps`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+        fetch(`/api/study/binders/${selectedBinderId}/weakness-quiz`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        })
+      ]);
+
+      if (gapsRes.ok) {
+        const data = await safeParseJson(gapsRes);
+        if (data && data.gapAnalysis) {
+          setGapAnalysis(data.gapAnalysis);
+          setSuggestedPathways(data.suggestedPathways || []);
+        }
+      }
+
+      if (examRes.ok) {
+        const data = await safeParseJson(examRes);
+        if (data && data.questions) {
+          dispatchAction('SET_WEAKNESS_QUESTIONS', data.questions);
+          setActiveRightTab('quiz');
+          setRightSidebarOpen(true);
+          showToast('Weakness scan complete. Start practice exam below!', 'success');
+          return;
+        }
+      }
+      showToast('Completed scan, but failed to draft custom exam questions.', 'info');
+    } catch (err) {
+      console.error('Error running weakness scanner:', err);
+      showToast('Connection failed during analysis scan.', 'error');
+    } finally {
+      setDocumentLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVerifiedReviews();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchReviewEligibility();
+    } else {
+      setReviewEligibility({ eligible: false, totalActiveSeconds: 0 });
+    }
+  }, [user]);
+
+  // Auto-generate Podcast Briefing when tab is opened
+  useEffect(() => {
+    if (activeRightTab === 'podcast' && (!podcastTurns || podcastTurns.length === 0) && !podcastLoading && selectedBinderId && documents.length > 0) {
+      handleGeneratePodcast();
+    }
+  }, [activeRightTab, podcastTurns, podcastLoading, selectedBinderId, documents]);
 
   // 2. Fetch Binders & History when Authenticated
   const fetchBinders = async () => {
@@ -1690,30 +1915,7 @@ export default function App() {
     }
   };
 
-  // Fetch document text for slide-out reader
-  const handleViewDocumentText = async (docId: string, name: string) => {
-    try {
-      setDocumentLoading(true);
-      setSelectedDocumentName(name);
-      setSelectedDocumentText('');
-      setActiveRightTab('viewer');
-      setRightSidebarOpen(true);
-      playSoundEffect('click');
 
-      const res = await fetch(`/api/study/documents/${docId}`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await safeParseJson(res, 'Failed to fetch document content.');
-        setSelectedDocumentText(data.document?.content || 'Empty context.');
-      } else {
-        setSelectedDocumentText('Failed to retrieve document text content.');
-      }
-    } catch (err) {
-      console.error(err);
-      setSelectedDocumentText('Network error fetching document text.');
-    } finally {
-      setDocumentLoading(false);
-    }
-  };
 
   const handleTranslateDocument = async (docId: string, docName: string, targetLanguage: string) => {
     if (!selectedBinderId) return;
@@ -2194,6 +2396,10 @@ export default function App() {
         // Post ingestion message directly to chat
         const autoMsgContent = `Uploaded and ingested \`${file.name}\`. Zenith AI has parsed the layout and added it to your active study context.`;
         setChatMessages(prev => [...prev, { role: 'system', content: autoMsgContent }]);
+
+        if (binderId) {
+          handleAutoSyllabusSummary(binderId, file.name);
+        }
         
         if (tourStep === 2) {
           setTourStep(3); // Advance onboarding tour
@@ -2248,84 +2454,251 @@ export default function App() {
     }
   };
 
-  const renderChatArtifact = (type: string, _binderId?: string, questionCount?: number) => {
+  const renderChatArtifact = (type: string, _binderId?: string, questionCount?: number, docId?: string, docName?: string, artifactKey?: string) => {
     
     let title = "";
     let desc = "";
     let icon = Sparkles;
-    let tabName: 'gaps' | 'viewer' | 'guide' | 'podcast' | 'srs' | 'quiz' | 'gaps' | 'viewer' = 'viewer';
     
     switch (type) {
       case 'flashcards':
         title = "Smart Recall Cards";
         desc = "Spaced repetition flashcards generated from your documents.";
         icon = Layers;
-        tabName = 'srs';
         break;
       case 'quiz':
         title = "Interactive Practice Quiz";
         desc = `Practice mock exam with ${questionCount || 5} questions and immediate feedback.`;
         icon = Award;
-        tabName = 'quiz';
         break;
       case 'weaknesses':
         title = "Conceptual Weakness Report";
         desc = "Detailed scan highlighting study gaps and recommended learning paths.";
         icon = TrendingUp;
-        tabName = 'gaps';
         break;
       case 'audio-review':
         title = "Audio Study Briefing";
         desc = "NotebookLM-style podcast discussion featuring co-hosts Alex and Taylor.";
         icon = Headphones;
-        tabName = 'podcast';
         break;
       case 'syllabus':
         title = "Master Study Syllabus";
         desc = "Structured multi-day study schedule and concept review guide.";
         icon = BookMarked;
-        tabName = 'guide';
+        break;
+      case 'viewer':
+        title = "Document Reader";
+        desc = docName || "Read document contents inline.";
+        icon = FileText;
         break;
       default:
         title = "Study Artifact";
         desc = "Workspace tool generated to assist with your studies.";
         icon = Sparkles;
-        tabName = 'viewer';
     }
 
     const Icon = icon;
-    const isOpen = rightSidebarOpen && activeRightTab === tabName;
+    const isExpanded = artifactKey ? !!expandedArtifacts[artifactKey] : false;
 
     return (
-      <div className="w-full bg-secondary/80 border border-border/80 p-4 rounded-xl flex items-center justify-between gap-4 my-2.5 backdrop-blur shadow-sm hover:border-primary/30 transition animate-all duration-300">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl flex-shrink-0">
-            <Icon className="h-5 w-5" />
+      <div className="w-full bg-secondary/80 border border-border/80 rounded-xl my-2.5 backdrop-blur shadow-sm hover:border-primary/30 transition animate-all duration-300 overflow-hidden flex flex-col">
+        <div className="p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 text-left">
+            <div className="p-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl flex-shrink-0">
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="text-left min-w-0">
+              <h4 className="text-xs font-bold text-foreground truncate">{title}</h4>
+              <p className="text-[10px] text-muted-foreground truncate max-w-[240px] mt-0.5">{desc}</p>
+            </div>
           </div>
-          <div className="text-left min-w-0">
-            <h4 className="text-xs font-bold text-foreground truncate">{title}</h4>
-            <p className="text-[10px] text-muted-foreground truncate max-w-[240px] mt-0.5">{desc}</p>
-          </div>
+          
+          <button
+            onClick={() => {
+              if (artifactKey) {
+                setExpandedArtifacts(prev => ({
+                  ...prev,
+                  [artifactKey]: !prev[artifactKey]
+                }));
+              }
+              playSoundEffect('success');
+            }}
+            className={`px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition flex-shrink-0 shadow flex items-center gap-1 ${
+              isExpanded
+                ? 'bg-secondary border border-border text-muted-foreground'
+                : 'bg-primary text-primary-foreground hover:opacity-90 active:scale-95'
+            }`}
+          >
+            <span>{isExpanded ? 'Collapse Tool' : 'Launch Tool'}</span>
+            <ChevronRight className={`h-3.5 w-3.5 transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+          </button>
         </div>
-        
-        <button
-          onClick={() => {
-            setActiveRightTab(tabName as any);
-            setRightSidebarOpen(true);
-            playSoundEffect('success');
-            if (window.innerWidth < 1024) {
-              setMobileTab('workbench');
-            }
-          }}
-          className={`px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition flex-shrink-0 shadow flex items-center gap-1 ${
-            isOpen
-              ? 'bg-secondary border border-border text-muted-foreground'
-              : 'bg-primary text-primary-foreground hover:opacity-90 active:scale-95'
-          }`}
-        >
-          <span>{isOpen ? 'Open in Split View' : 'Launch Tool'}</span>
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
+
+        {isExpanded && (
+          <div className="border-t border-border bg-input/10 p-4 w-full">
+            {type === 'flashcards' && (
+              <FlashcardSRS soundOn={soundOn} binderId={_binderId || selectedBinderId} />
+            )}
+            {type === 'quiz' && (
+              <MockExamEngine initialBinderId={_binderId || selectedBinderId} initialQuestionCount={questionCount} onGradeCompleted={handleExamGradeCompleted} />
+            )}
+            {type === 'weaknesses' && (
+              <div className="space-y-4 text-left">
+                <div className="bg-input border border-border rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5 text-accent text-xs font-bold">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>WEAKNESSES DETECTED</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+                    {gapAnalysis ? (
+                      <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                        {gapAnalysis}
+                      </ReactMarkdown>
+                    ) : (
+                      <div className="text-xs text-muted space-y-3">
+                        <p>No gap analysis generated yet. Click scan to analyze binder gaps.</p>
+                        <button
+                          onClick={handleRunWeaknessScanner}
+                          disabled={documentLoading || !(_binderId || selectedBinderId)}
+                          className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10.5px] font-bold disabled:opacity-50 transition"
+                        >
+                          Scan Binder Gaps
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {suggestedPathways.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest pl-1">Suggested Pathways</span>
+                    <div className="grid grid-cols-1 gap-2">
+                      {suggestedPathways.map((path, idx) => (
+                        <div key={idx} className="flex items-start gap-2 p-2 bg-input/50 border border-border rounded-xl">
+                          <ChevronRight className="h-3 w-3 text-primary mt-1.5 flex-shrink-0" />
+                          <p className="text-[10.5px] text-foreground leading-normal">{path}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {type === 'audio-review' && (
+              <div className="space-y-4 text-left">
+                {podcastTurns.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-input p-3 rounded-xl border border-border">
+                      <span className="text-xs font-bold text-muted uppercase tracking-wider pl-1">Alex & Taylor Co-Hosts</span>
+                      <div className="flex items-center gap-2">
+                        {podcastPlaying ? (
+                          <button
+                            onClick={() => {
+                              setPodcastPlaying(false);
+                              window.speechSynthesis.cancel();
+                            }}
+                            className="p-2 bg-accent/25 border border-accent/40 text-accent rounded-full hover:bg-accent/40 transition"
+                          >
+                            <Pause className="h-4.5 w-4.5 fill-current" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              speakDialogue(activePodcastIndex);
+                              setPodcastPlaying(true);
+                            }}
+                            className="p-2 bg-primary/25 border border-primary/40 text-primary rounded-full hover:bg-primary/40 transition"
+                          >
+                            <Play className="h-4.5 w-4.5 fill-current" />
+                          </button>
+                        )}
+                        <select
+                          value={podcastSpeed}
+                          onChange={(e) => {
+                            setPodcastSpeed(Number(e.target.value));
+                            if (podcastPlaying) speakDialogue(activePodcastIndex);
+                          }}
+                          className="bg-input border border-border rounded-xl px-2.5 py-1 text-xs text-foreground focus:outline-none"
+                        >
+                          <option value={0.85}>0.85x</option>
+                          <option value={1}>1.0x</option>
+                          <option value={1.2}>1.2x</option>
+                          <option value={1.5}>1.5x</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 select-text">
+                      {podcastTurns.map((turn, idx) => {
+                        const isActive = idx === activePodcastIndex;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              speakDialogue(idx);
+                              if (!podcastPlaying) setPodcastPlaying(true);
+                            }}
+                            className={`p-3 border rounded-xl cursor-pointer text-xs transition ${
+                              isActive
+                                ? 'bg-primary/10 border-primary/30'
+                                : 'bg-input/40 border-border hover:border-muted'
+                            }`}
+                          >
+                            <span className={`font-bold uppercase tracking-wider text-[9px] block mb-1 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
+                              {turn.speaker}
+                            </span>
+                            <p className="leading-relaxed font-sans">{turn.text}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-secondary/50 border border-border rounded-2xl space-y-3">
+                    <p className="text-xs text-muted">Generate a text-to-speech discussion overview of your binder files.</p>
+                    <button
+                      onClick={handleGeneratePodcast}
+                      disabled={sourceGuideLoading || !(_binderId || selectedBinderId)}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold transition"
+                    >
+                      Compile Podcast Briefing
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {type === 'syllabus' && (
+              <div className="space-y-4 text-left">
+                {sourceGuideLoading ? (
+                  <div className="flex flex-col justify-center items-center py-10 gap-3">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <span className="text-xs text-foreground font-semibold">Generating syllabus...</span>
+                  </div>
+                ) : sourceGuideText ? (
+                  <div className="space-y-4">
+                    <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+                      <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                        {sourceGuideText}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-secondary/50 border border-border rounded-2xl space-y-3">
+                    <p className="text-xs text-muted">Generate a comprehensive study syllabus covering this topic.</p>
+                    <button
+                      onClick={handleGenerateStudyGuide}
+                      disabled={sourceGuideLoading || !(_binderId || selectedBinderId)}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold transition"
+                    >
+                      Generate Master Syllabus
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {type === 'viewer' && docId && docName && (
+              <InlineDocumentViewer docId={docId} docName={docName} showToast={showToast} />
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -2357,13 +2730,16 @@ export default function App() {
   };
 
   // Chat Streaming
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || chatStreaming) return;
+  const handleChatSubmit = async (e?: React.FormEvent, customInput?: string) => {
+    if (e) e.preventDefault();
+    const inputVal = customInput !== undefined ? customInput : chatInput;
+    if (!inputVal.trim() || chatStreaming) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: chatInput };
+    const userMessage: ChatMessage = { role: 'user', content: inputVal };
     setChatMessages(prev => [...prev, userMessage]);
-    setChatInput('');
+    if (customInput === undefined) {
+      setChatInput('');
+    }
     setChatStreaming(true);
     setChatError(null);
     playSoundEffect('click');
@@ -2371,8 +2747,8 @@ export default function App() {
     // Build context prompt injecting screen context
     const contextExplanation = getScreenContext();
 
-    const assistantMsgIndex = chatMessages.length + 1;
     setChatMessages(prev => [...prev, { role: 'assistant', content: '', thoughts: [] }]);
+    const assistantMsgIndex = chatMessages.length + 1;
 
     let fullResponse = '';
     try {
@@ -2383,7 +2759,7 @@ export default function App() {
         body: JSON.stringify({
           messages: [
             ...chatMessages,
-            { role: 'user', content: userMessage.content }
+            userMessage
           ],
           contextExplanation: contextExplanation,
           binderId: selectedBinderId || undefined,
@@ -2543,22 +2919,25 @@ export default function App() {
   // Pomodoro Focus Timer
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    if (pomodoroActive && pomodoroTime > 0) {
+    if (pomodoroActive) {
       interval = setInterval(() => {
-        setPomodoroTime(prev => prev - 1);
+        setPomodoroTime(prev => {
+          if (prev <= 1) {
+            setPomodoroActive(false);
+            if (soundOn) {
+              playSoundEffect('correct');
+            }
+            showToast('Focus interval completed! Take a break.', 'success');
+            return 25 * 60;
+          }
+          return prev - 1;
+        });
       }, 1000);
-    } else if (pomodoroTime === 0 && pomodoroActive) {
-      setPomodoroActive(false);
-      if (soundOn) {
-        playSoundEffect('correct');
-      }
-      showToast('Focus interval completed! Take a break.', 'success');
-      setPomodoroTime(25 * 60);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [pomodoroActive, pomodoroTime, soundOn]);
+  }, [pomodoroActive, soundOn]);
 
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -2604,7 +2983,7 @@ export default function App() {
   };
 
   // Filter Testimonials
-  const filteredTestimonials = testimonials.filter(
+  const filteredTestimonials = verifiedReviews.filter(
     t => selectedReviewCategory === 'all' || t.category === selectedReviewCategory
   );
 
@@ -2834,9 +3213,9 @@ export default function App() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { val: "50MB+", label: "Max File Ingest", desc: "PDFs, slides & repos" },
-              { val: "10k+", label: "Study Binders", desc: "Active workspaces" },
-              { val: "99.4%", label: "Accuracy Rate", desc: "Semantic retrieval" },
-              { val: "SM-2", label: "Recall Algorithm", desc: "Spaced repetition" }
+              { val: "SM-2", label: "Recall Algorithm", desc: "Spaced repetition model" },
+              { val: "100%", label: "Data Sovereignty", desc: "Context stays in your session" },
+              { val: "Private", label: "Local Isolation", desc: "No marketing tracking metrics" }
             ].map((stat, idx) => (
               <div key={idx} className="bg-secondary/40 border border-border p-4 rounded-xl text-center space-y-1 hover:border-primary transition duration-300">
                 <span className="text-xl md:text-2xl font-extrabold text-primary block">{stat.val}</span>
@@ -3016,12 +3395,12 @@ export default function App() {
         {/* Real Student Reviews Grid */}
         <section className="py-12 px-6 max-w-4xl mx-auto w-full space-y-6 z-10">
           <div className="text-center space-y-2">
-            <h2 className="text-xl md:text-2xl font-bold text-foreground">Loved by Students</h2>
-            <p className="text-xs text-muted">See how students across disciplines optimize their exam prep and research pipelines.</p>
+            <h2 className="text-xl md:text-2xl font-bold text-foreground">Verified Student Reviews</h2>
+            <p className="text-xs text-muted">See how students across disciplines leverage StudySphere AI to optimize their study active sessions.</p>
             
             {/* Category Filters */}
             <div className="flex justify-center gap-1.5 pt-2 flex-wrap">
-              {['all', 'stem', 'humanities', 'law'].map(cat => (
+              {['all', 'stem', 'humanities', 'law', 'other'].map(cat => (
                 <button
                   key={cat}
                   onClick={() => { setSelectedReviewCategory(cat as any); playSoundEffect('click'); }}
@@ -3037,83 +3416,156 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredTestimonials.map((test, index) => (
-              <div key={index} className="bg-secondary/40 border border-border p-4 rounded-xl space-y-2.5 flex flex-col justify-between hover:border-primary transition">
-                <p className="text-[11px] text-muted leading-relaxed italic">"{test.text}"</p>
-                <div className="flex justify-between items-center pt-2 border-t border-border">
-                  <div className="text-[10.5px]">
-                    <span className="font-bold text-foreground block">{test.name}</span>
-                    <span className="text-[9.5px] text-muted">{test.role}</span>
-                  </div>
-                  <div className="flex items-center gap-0.5 text-amber-500">
-                    {[...Array(test.rating)].map((_, i) => (
-                      <Star key={i} className="h-3 w-3 fill-current" />
-                    ))}
+          {reviewsLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : filteredTestimonials.length === 0 ? (
+            <div className="text-center py-12 bg-secondary/20 border border-border/40 rounded-2xl">
+              <p className="text-xs text-muted">No verified reviews found in this category.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredTestimonials.map((test, index) => (
+                <div key={index} className="bg-secondary/40 border border-border p-4 rounded-xl space-y-2.5 flex flex-col justify-between hover:border-primary transition duration-300">
+                  <p className="text-[11px] text-muted leading-relaxed italic">"{test.text}"</p>
+                  <div className="flex justify-between items-center pt-2 border-t border-border">
+                    <div className="text-[10.5px]">
+                      <span className="font-bold text-foreground flex items-center gap-1.5">
+                        {test.name}
+                        <span className="inline-flex items-center gap-0.5 text-[8.5px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full border border-emerald-500/20 select-none">
+                          <ShieldCheck className="h-2.5 w-2.5" /> Verified
+                        </span>
+                      </span>
+                      <span className="text-[9.5px] text-muted">{test.role}</span>
+                    </div>
+                    <div className="flex items-center gap-0.5 text-amber-500">
+                      {[...Array(test.rating)].map((_, i) => (
+                        <Star key={i} className="h-3 w-3 fill-current" />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          )}
 
-        {/* Product Comparison Matrix */}
-        <section className="py-12 bg-secondary/20 border-t border-border px-6 max-w-5xl mx-auto w-full space-y-6 z-10">
-          <div className="text-center space-y-1">
-            <h2 className="text-xl md:text-2xl font-bold text-foreground">Zenith AI vs. Best Study Tools</h2>
-            <p className="text-xs text-muted">Why Zenith AI is the ultimate choice for stateful study synthesis.</p>
-          </div>
-
-          <div className="overflow-x-auto border border-border rounded-xl">
-            <table className="w-full border-collapse text-left text-xs text-muted">
-              <thead>
-                <tr className="bg-input border-b border-border">
-                  <th className="p-3 font-semibold text-foreground">Features</th>
-                  <th className="p-3 font-semibold text-primary">Zenith AI (StudySphere)</th>
-                  <th className="p-3 font-semibold text-muted">NotebookLM</th>
-                  <th className="p-3 font-semibold text-muted">Mindgrasp AI</th>
-                  <th className="p-3 font-semibold text-muted">Quizlet</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/50">
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">Multi-file RAG Indexing</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> 50MB Binder + Web Crawler</td>
-                  <td className="p-3 text-muted">Multi-doc files (No URL crawler)</td>
-                  <td className="p-3 text-muted">Basic single file summarization</td>
-                  <td className="p-3 text-muted">Manual flashcard sets only</td>
-                </tr>
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">Active Recall (SM-2 Cards)</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Relational Postgres DB Sync</td>
-                  <td className="p-3 text-muted">No database sync or recall engine</td>
-                  <td className="p-3 text-muted">Static summaries per document</td>
-                  <td className="p-3 text-muted">Standard flashcards (No AI prompts)</td>
-                </tr>
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">Organic Conversational Review</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Interactive Voice Pods</td>
-                  <td className="p-3 text-muted">Studio Audio Pods (Static)</td>
-                  <td className="p-3 text-muted">Simple TTS reading (no interaction)</td>
-                  <td className="p-3 text-muted">No speech synthesis or reviews</td>
-                </tr>
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">Adaptive Mock Exam Engine</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Gap Reviews & Weakness Tracking</td>
-                  <td className="p-3 text-muted">No practice exams or grading stats</td>
-                  <td className="p-3 text-muted">Static multiple-choice questions</td>
-                  <td className="p-3 text-muted">Basic practice tests (no doc analysis)</td>
-                </tr>
-                <tr>
-                  <td className="p-3 text-foreground/90 font-medium">HTTP-only Session Security</td>
-                  <td className="p-3 text-emerald-500 font-semibold flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Hardened OAuth & Cookies</td>
-                  <td className="p-3 text-muted">Standard Google accounts</td>
-                  <td className="p-3 text-muted">Local-storage JWT cookies (Vuln)</td>
-                  <td className="p-3 text-muted">Basic web session trackers</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {/* Review Submission Form Section */}
+          {user ? (
+            <div className="mt-8 p-6 bg-secondary/35 border border-border/40 rounded-2xl space-y-4 shadow-sm">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" /> Leave a Student Review
+              </h3>
+              {reviewEligibility.eligible ? (
+                <form onSubmit={handleReviewSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Name</label>
+                      <input
+                        type="text"
+                        value={reviewName}
+                        onChange={(e) => setReviewName(e.target.value)}
+                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Role / Field of Study</label>
+                      <input
+                        type="text"
+                        value={reviewRole}
+                        onChange={(e) => setReviewRole(e.target.value)}
+                        placeholder="e.g. CS Student, Medical Resident"
+                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Study Discipline</label>
+                      <select
+                        value={reviewCategory}
+                        onChange={(e) => setReviewCategory(e.target.value as any)}
+                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
+                      >
+                        <option value="stem">STEM / Engineering</option>
+                        <option value="humanities">Humanities / Arts</option>
+                        <option value="law">Law / Social Sciences</option>
+                        <option value="other">Other / Vocational</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Rating</label>
+                      <div className="flex items-center gap-1.5 h-9">
+                        {[1, 2, 3, 4, 5].map((val) => (
+                          <button
+                            type="button"
+                            key={val}
+                            onClick={() => setReviewRating(val)}
+                            className="text-amber-500 hover:scale-110 active:scale-95 transition"
+                          >
+                            <Star className={`h-5 w-5 ${reviewRating >= val ? 'fill-current' : 'text-muted-foreground/30'}`} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Review Feedback</label>
+                    <textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      rows={3}
+                      placeholder="Share your study experience with StudySphere AI..."
+                      className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition resize-none"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submittingReview}
+                    className="w-full py-2 bg-primary text-primary-foreground font-semibold rounded-xl text-xs hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    {submittingReview ? 'Submitting...' : 'Submit Verified Review'}
+                  </button>
+                </form>
+              ) : (
+                <div className="space-y-3 p-4 bg-input/10 border border-border/40 rounded-xl">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
+                    <Lock className="h-4 w-4" />
+                    <span>Review Submission Locked</span>
+                  </div>
+                  <p className="text-[11px] text-muted leading-relaxed">
+                    To maintain study feedback integrity, reviews can only be submitted by verified students who have completed at least **60 seconds** of active study time on the platform.
+                  </p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-muted font-mono">
+                      <span>Verified Study Duration</span>
+                      <span>{Math.round(reviewEligibility.totalActiveSeconds)}s / 60s</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-input rounded-full overflow-hidden border border-border/20">
+                      <div
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${Math.min(100, (reviewEligibility.totalActiveSeconds / 60) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[9.5px] text-muted italic">
+                    Start a study session in the workspace to automatically update your study timer.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-8 p-6 bg-secondary/35 border border-border/40 rounded-2xl text-center space-y-2">
+              <Lock className="h-5 w-5 text-muted mx-auto" />
+              <h3 className="text-xs font-bold text-foreground">Write a Review</h3>
+              <p className="text-[10.5px] text-muted max-w-sm mx-auto">
+                Please sign in with Google or access as a Guest to participate in verified student feedback.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Footer */}
@@ -3132,170 +3584,36 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-background text-foreground font-sans">
       
       {/* Top Banner Header */}
-      <header className="h-20 border-b border-border/30 bg-secondary/80 backdrop-blur-xl sticky top-0 z-40 px-4 sm:px-8 flex justify-between items-center shadow-lg shadow-black/2 hover:shadow-xl transition-shadow duration-300">
-        <div className="flex items-center gap-3.5">
+      <header className="h-14 bg-background/95 backdrop-blur-md sticky top-0 z-40 px-6 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-3">
           {/* Left panel menu toggler */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2.5 hover:bg-input border border-border/45 rounded-2xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
+            className="p-1.5 hover:bg-secondary rounded-lg text-muted hover:text-foreground transition active:scale-95"
             title="Toggle Binders Panel"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4.5 w-4.5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <StudySphereLogo size="medium" />
-            <h1 className="hidden sm:inline font-extrabold text-base tracking-tight text-foreground">StudySphere <span className="text-primary font-light">AI</span></h1>
+          {/* Minimalist Breadcrumbs */}
+          <div className="flex items-center gap-2 text-[11px] font-medium text-muted">
+            <span>Workspace</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
+            <span className="text-foreground font-semibold truncate max-w-[120px] sm:max-w-[200px]">
+              {selectedBinder ? selectedBinder.name : 'Study Binder'}
+            </span>
           </div>
         </div>
 
-        {/* Focus & Streak Badges */}
-        <div className="flex items-center gap-2.5 sm:gap-3.5">
-          {/* Theme switcher */}
+        {/* Action controls */}
+        <div className="flex items-center gap-2">
+          {/* Settings / Command Center Trigger */}
           <button
-            onClick={() => {
-              setTheme(prev => prev === 'light' ? 'dark' : 'light');
-              playSoundEffect('click');
-            }}
-            className="p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
-            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            onClick={() => { setShowSettingsModal(true); playSoundEffect('click'); }}
+            className="p-1.5 hover:bg-secondary rounded-lg text-muted hover:text-foreground transition active:scale-95"
+            title="Open Settings & Command Center"
           >
-            {theme === 'light' ? <Moon className="h-4.5 w-4.5 text-accent" /> : <Sun className="h-4.5 w-4.5 text-accent" />}
-          </button>
-
-          {/* Lofi Study Music Synth */}
-          <button
-            onClick={() => {
-              setStudyMusicPlaying(prev => {
-                const next = !prev;
-                if (next) {
-                  startLofiMusic();
-                } else {
-                  stopLofiMusic();
-                }
-                return next;
-              });
-              playSoundEffect('click');
-            }}
-            className={`hidden sm:flex p-2 border rounded-xl transition transform hover:scale-105 active:scale-95 duration-200 items-center gap-1.5 ${
-              studyMusicPlaying
-                ? 'bg-[#6366f1]/15 border-[#6366f1] text-[#6366f1]'
-                : 'hover:bg-input border-border/40 text-muted hover:text-foreground'
-            }`}
-            title="Study Lofi Ambient Synth"
-          >
-            <Headphones className={`h-4.5 w-4.5 ${studyMusicPlaying ? 'animate-bounce' : ''}`} />
-            {studyMusicPlaying && (
-              <div className="flex items-center gap-0.5 h-3 ml-0.5">
-                <span className="wave-bar" style={{ animationDuration: '0.6s' }}></span>
-                <span className="wave-bar" style={{ animationDuration: '0.9s' }}></span>
-                <span className="wave-bar" style={{ animationDuration: '0.7s' }}></span>
-              </div>
-            )}
-          </button>
-
-          {/* Pomodoro Focus Timer */}
-          <div className="hidden sm:flex items-center bg-input border border-border/45 rounded-xl px-3 py-1.5 text-xs gap-2.5 shadow-inner">
-            <Clock className="h-4 w-4 text-primary animate-pulse" />
-            <span className="font-mono text-foreground font-medium">{formatTimer(pomodoroTime)}</span>
-            <div className="flex items-center gap-1.5 border-l border-border/40 pl-2.5 ml-1.5">
-              <button
-                onClick={() => setPomodoroActive(!pomodoroActive)}
-                className="text-muted hover:text-foreground transition transform hover:scale-110 active:scale-90"
-              >
-                {pomodoroActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                onClick={() => setPomodoroTime(25 * 60)}
-                className="text-muted hover:text-foreground transition transform hover:scale-110 active:scale-90"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => setSoundOn(!soundOn)}
-                className="text-muted hover:text-foreground transition transform hover:scale-110 active:scale-90"
-              >
-                {soundOn ? <Volume2 className="h-3.5 w-3.5 text-primary" /> : <VolumeX className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Session Study Time Timer */}
-          <div className="hidden sm:flex items-center bg-input border border-border/45 rounded-xl px-3 py-1.5 text-xs gap-2 shadow-inner" title="Active Study Session Time">
-            <Clock className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-            <span className="font-mono text-foreground font-medium">
-              {formatStudyTime(sessionStudyTime)}
-            </span>
-          </div>
-
-          {/* Daily Streak */}
-          <div className="flex items-center gap-1.5 bg-input border border-border/45 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-purple-400 shadow-inner">
-            <span>🔥</span>
-            <span>{streak}d</span>
-          </div>
-
-          {/* Tour Trigger */}
-          <button
-            onClick={() => { setTourStep(1); playSoundEffect('click'); }}
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-primary border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
-          >
-            <HelpCircle className="h-4 w-4" />
-            <span>Guided Tour</span>
-          </button>
-
-          <button
-            onClick={() => { setShowMemoryModal(true); playSoundEffect('click'); }}
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 bg-input hover:bg-secondary text-accent border border-border/45 rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200"
-            title="Configure Personal AI Memory"
-          >
-            <Brain className="h-4 w-4 text-accent" />
-            <span className="hidden md:inline">AI Memory</span>
-          </button>
-
-          {/* Admin Dashboard Switcher */}
-          {user?.email === 'epicarkplayerpt@gmail.com' && (
-            <button
-              onClick={() => {
-                setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
-                playSoundEffect('click');
-              }}
-              className={`hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 border rounded-xl text-xs font-semibold transition transform hover:scale-105 active:scale-95 duration-200 ${
-                activeTab === 'admin'
-                  ? 'bg-primary/15 border-primary text-primary shadow-glow'
-                  : 'bg-input hover:bg-secondary border-border/45 text-muted hover:text-foreground'
-              }`}
-              title="Toggle Dashboard Metrics & Prompts"
-            >
-              <TrendingUp className="h-4 w-4" />
-              <span className="hidden md:inline">Admin View</span>
-            </button>
-          )}
-
-          {/* Right Sidebar toggle */}
-          <button
-            onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-            className="p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
-            title="Toggle Document Viewer & Stats"
-          >
-            <History className="h-4.5 w-4.5" />
-          </button>
-
-          {/* Quick Start Tour */}
-          <button
-            onClick={() => { setTourStep(1); playSoundEffect('click'); }}
-            className="hidden md:flex p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200"
-            title="Start Onboarding Tour"
-          >
-            <HelpCircle className="h-4.5 w-4.5" />
-          </button>
-
-          {/* Sign Out */}
-          <button
-            onClick={handleSignOut}
-            className="p-2 hover:bg-input/10 hover:bg-red-500/10 border border-border/40 hover:border-red-500/30 rounded-xl text-muted hover:text-red-500 transition transform hover:scale-105 active:scale-95 duration-200"
-            title="Sign Out"
-          >
-            <LogOut className="h-4.5 w-4.5" />
+            <Settings className="h-4.5 w-4.5" />
           </button>
         </div>
       </header>
@@ -3497,7 +3815,19 @@ export default function App() {
                               )}
                             </div>
                             <button
-                              onClick={(e) => { e.stopPropagation(); handleViewDocumentText(doc.id, doc.name); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newMsg: ChatMessage = {
+                                  role: 'assistant',
+                                  content: `<study-artifact type="viewer" docId="${doc.id}" docName="${doc.name}"></study-artifact>`
+                                };
+                                setChatMessages(prev => [...prev, newMsg]);
+                                const newMsgIdx = chatMessages.length;
+                                const artifactKey = `msg-${newMsgIdx}-part-0`;
+                                setExpandedArtifacts(prev => ({ ...prev, [artifactKey]: true }));
+                                playSoundEffect('success');
+                                showToast(`Opened "${doc.name}" inline in chat.`, 'success');
+                              }}
                               className="p-0.5 hover:bg-secondary text-muted hover:text-primary rounded transition"
                               title="Read File"
                             >
@@ -3638,26 +3968,7 @@ export default function App() {
                   <span className="hidden sm:inline">Clear History</span>
                 </button>
 
-                {/* Workspace Split Panel Toggle */}
-                <button
-                  onClick={() => {
-                    if (window.innerWidth < 1024) {
-                      setMobileTab('workbench');
-                    } else {
-                      setRightSidebarOpen(!rightSidebarOpen);
-                    }
-                    playSoundEffect('click');
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[11px] font-bold transition duration-200 ${
-                    rightSidebarOpen
-                      ? 'bg-primary/15 border-primary/20 text-primary hover:bg-primary/20'
-                      : 'bg-input/40 border-border/40 text-muted hover:text-foreground hover:bg-input'
-                  }`}
-                  title="Toggle Workspace Tools"
-                >
-                  <BookOpen className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Workspace Tools</span>
-                </button>
+
               </div>
             </div>
 
@@ -3776,9 +4087,8 @@ export default function App() {
                               {isUser ? 'You' : 'Zenith AI'}
                             </span>
                             {!isUser && (
-                              <span className="text-[8.5px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-full flex items-center gap-0.5 shadow-glow-sm select-none">
-                                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                                99.4% trust
+                              <span className="text-[8.5px] font-bold text-muted bg-input px-1.5 py-0.2 rounded-full border border-border/40 select-none">
+                                AI Assistant
                               </span>
                             )}
                             {!isUser && msg.content && (
@@ -3843,9 +4153,10 @@ export default function App() {
 
                                 {parseMessageArtifacts(msg.content).map((part, pIdx) => {
                                   if (part.type === 'artifact') {
+                                    const artifactKey = `msg-${index}-part-${pIdx}`;
                                     return (
                                       <SafeErrorBoundary key={pIdx}>
-                                        {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
+                                        {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount, part.docId, part.docName, artifactKey)}
                                       </SafeErrorBoundary>
                                     );
                                   }
@@ -3902,8 +4213,7 @@ export default function App() {
                       key={act.label}
                       type="button"
                       onClick={() => {
-                        setChatInput(act.prompt);
-                        setActiveRightTab(act.type as any);
+                        handleChatSubmit(undefined, act.prompt);
                         playSoundEffect('click');
                       }}
                       className="flex items-center gap-1 px-2.5 py-1 bg-input/40 border border-border/60 hover:bg-input text-[9.5px] font-bold text-muted hover:text-foreground rounded-lg transition whitespace-nowrap"
@@ -3962,6 +4272,7 @@ export default function App() {
         {/* ======================================================== */}
         {/* COLUMN 3: RIGHT COLLAPSIBLE WORKSPACE (Source Workbench) */}
         {/* ======================================================== */}
+        {false && (
         <aside className={`inset-y-0 right-0 bg-secondary border-border flex flex-col transition-all duration-300 ease-in-out z-10 ${
           mobileTab === 'workbench' ? 'flex fixed w-full' : 'hidden lg:flex lg:relative'
         } ${
@@ -4322,7 +4633,7 @@ export default function App() {
                           <span className="text-xs font-bold text-foreground uppercase tracking-wider">Weakness Scanner</span>
                         </div>
                         <button
-                          onClick={handleRunGapAnalysis}
+                          onClick={handleRunWeaknessScanner}
                           disabled={documentLoading || !selectedBinderId}
                           className="px-3 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10.5px] font-bold disabled:opacity-50 transition transform active:scale-95"
                         >
@@ -4377,9 +4688,10 @@ export default function App() {
             </SandboxedApp>
           </div>
         </aside>
+        )}
 
         {/* Right Sidebar overlay backdrop on mobile screens */}
-        {rightSidebarOpen && (
+        {false && rightSidebarOpen && (
           <div 
             onClick={() => setRightSidebarOpen(false)}
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
@@ -4661,6 +4973,149 @@ export default function App() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Settings & Command Center Modal Overlay */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="glass-panel p-6 rounded-2xl max-w-md w-full space-y-5 shadow-2xl animate-fade-in-up">
+            <div className="flex justify-between items-center border-b border-border pb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Sliders className="h-4 w-4" /> Command Center
+              </span>
+              <button type="button" onClick={() => setShowSettingsModal(false)} className="text-muted hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Pomodoro Focus Timer Section */}
+            <div className="bg-input/35 border border-border/40 p-4 rounded-xl space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-foreground">Pomodoro Focus Timer</span>
+                <span className="font-mono text-sm font-semibold bg-input px-2 py-0.5 rounded border border-border/40">{formatTimer(pomodoroTime)}</span>
+              </div>
+              <div className="flex items-center gap-2 justify-center">
+                <button
+                  onClick={() => { setPomodoroActive(!pomodoroActive); playSoundEffect('click'); }}
+                  className="px-3 py-1.5 bg-secondary hover:bg-input text-foreground border border-border/40 rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  {pomodoroActive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                  <span>{pomodoroActive ? 'Pause' : 'Start'}</span>
+                </button>
+                <button
+                  onClick={() => { setPomodoroTime(25 * 60); playSoundEffect('click'); }}
+                  className="px-3 py-1.5 bg-secondary hover:bg-input text-foreground border border-border/40 rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Reset</span>
+                </button>
+                <button
+                  onClick={() => { setSoundOn(!soundOn); playSoundEffect('click'); }}
+                  className="p-1.5 bg-secondary hover:bg-input text-foreground border border-border/40 rounded-lg"
+                  title="Toggle Sound Effects"
+                >
+                  {soundOn ? <Volume2 className="h-4 w-4 text-primary" /> : <VolumeX className="h-4 w-4 text-muted" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Lofi study music synth section */}
+            <div className="bg-input/35 border border-border/40 p-4 rounded-xl flex items-center justify-between">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5 font-sans">
+                <Headphones className="h-4 w-4 text-primary" /> Ambient Lofi Lounge
+              </span>
+              <button
+                onClick={() => {
+                  setStudyMusicPlaying(prev => {
+                    const next = !prev;
+                    if (next) startLofiMusic();
+                    else stopLofiMusic();
+                    return next;
+                  });
+                  playSoundEffect('click');
+                }}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                  studyMusicPlaying ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary hover:bg-input text-muted'
+                }`}
+              >
+                {studyMusicPlaying ? 'Active' : 'Play'}
+              </button>
+            </div>
+
+            {/* Study Stats & Daily Streak */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-input/35 border border-border/40 p-3.5 rounded-xl text-center space-y-1">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Daily Streak</span>
+                <span className="text-base font-extrabold text-purple-400">🔥 {streak} Days</span>
+              </div>
+              <div className="bg-input/35 border border-border/40 p-3.5 rounded-xl text-center space-y-1">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">Active Study Time</span>
+                <span className="text-sm font-mono font-bold text-emerald-400">{formatStudyTime(sessionStudyTime)}</span>
+              </div>
+            </div>
+
+            {/* Theme & Configurations Options */}
+            <div className="space-y-2.5">
+              <div className="flex justify-between items-center bg-input/20 p-2.5 rounded-xl">
+                <span className="text-xs text-foreground font-sans">Workspace Theme</span>
+                <button
+                  onClick={() => {
+                    setTheme(theme === 'light' ? 'dark' : 'light');
+                    playSoundEffect('click');
+                  }}
+                  className="p-1.5 bg-input hover:bg-secondary rounded-lg border border-border/45"
+                >
+                  {theme === 'light' ? <Moon className="h-4 w-4 text-accent" /> : <Sun className="h-4 w-4 text-accent" />}
+                </button>
+              </div>
+
+              <button
+                onClick={() => { setShowMemoryModal(true); setShowSettingsModal(false); playSoundEffect('click'); }}
+                className="w-full py-2 bg-secondary hover:bg-input text-foreground border border-border/40 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <Brain className="h-4 w-4 text-accent" />
+                <span>Configure AI Memory</span>
+              </button>
+
+              <button
+                onClick={() => { setTourStep(1); setShowSettingsModal(false); playSoundEffect('click'); }}
+                className="w-full py-2 bg-secondary hover:bg-input text-foreground border border-border/40 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <HelpCircle className="h-4 w-4 text-primary" />
+                <span>Guided Tour</span>
+              </button>
+
+              {user?.email === 'epicarkplayerpt@gmail.com' && (
+                <button
+                  onClick={() => {
+                    setActiveTab(activeTab === 'admin' ? 'chat' : 'admin');
+                    setShowSettingsModal(false);
+                    playSoundEffect('click');
+                  }}
+                  className={`w-full py-2 border rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    activeTab === 'admin'
+                      ? 'bg-primary/20 border-primary text-primary'
+                      : 'bg-secondary hover:bg-input border-border/40 text-muted'
+                  }`}
+                >
+                  <TrendingUp className="h-4 w-4 text-accent" />
+                  <span>Admin View Dashboard</span>
+                </button>
+              )}
+            </div>
+
+            {/* Logout / Sign Out actions */}
+            <div className="border-t border-border pt-4">
+              <button
+                onClick={() => { handleSignOut(); setShowSettingsModal(false); }}
+                className="w-full py-2 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 text-red-400 hover:text-red-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -71,7 +71,7 @@ export const generateQuizSchema = z.object({
     binderId: z.string().uuid('Invalid binder ID format'),
   }),
   body: z.object({
-    questionCount: z.number().int().min(1).max(20).optional().default(5),
+    questionCount: z.number().int().min(1).optional().default(5),
   }),
 });
 

@@ -163,6 +163,20 @@ const gradingSchema = {
   required: ["score", "questionGrades", "gapAnalysis", "suggestedPathways"]
 };
 
+// Public Reviews Endpoint
+router.get('/reviews', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const reviews = await prisma.review.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    res.json({ reviews });
+  } catch (error: any) {
+    logger.error('Failed to fetch reviews: %s', error.message);
+    res.status(500).json({ error: 'Failed to retrieve reviews.' });
+  }
+});
+
 // Enforce authentication on all study routes
 router.use(checkAuthRequired);
 
@@ -911,7 +925,7 @@ router.post('/query', validateRequest(querySchema), async (req: Request, res: Re
     );
 
     const systemInstruction = `
-You are the Zenith AI Interactive Assistant (never refer to yourself as Google Gemini or a Gemini model. You are Zenith AI, created by the Zenith team).
+You are Zenith, a highly capable study assistant. Retain your Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter. Your absolute focus must be on the user's specific study data (such as ATAR content, math applications, music theory, history, computer science, etc.). Deliver direct, high-fidelity, and evidence-based academic feedback citing their documents and context, rather than generic or promotional responses. Never refer to yourself as Google Gemini or a Gemini model.
 Analyze the user query based on the encapsulated files, web results, and scraped contents inside the XML tags.
 
 [HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
@@ -1694,6 +1708,158 @@ Ensure the output is strictly valid JSON. Do not wrap it in markdown code blocks
   } catch (error: any) {
     logger.error('Conceptual Gap Analysis Error: %s', error.stack || error.message);
     res.status(500).json({ error: 'Failed to process conceptual gap analysis.' });
+  }
+});
+
+// Check if user is eligible to write a review
+router.get('/reviews/eligible', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const sessions = await prisma.session.findMany({
+      where: { userId },
+    });
+    const totalActiveSeconds = sessions.reduce((sum, s) => sum + s.activeSeconds, 0);
+    res.json({
+      eligible: totalActiveSeconds >= 60,
+      totalActiveSeconds,
+    });
+  } catch (error: any) {
+    logger.error('Failed to check review eligibility: %s', error.message);
+    res.status(500).json({ error: 'Failed to verify eligibility.' });
+  }
+});
+
+// Submit a verified student review
+router.post('/reviews', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { text, rating, category, name, role } = req.body;
+
+    if (!text || !rating || !category) {
+      res.status(400).json({ error: 'Please provide rating, category, and review text.' });
+      return;
+    }
+
+    const sessions = await prisma.session.findMany({
+      where: { userId },
+    });
+    const totalActiveSeconds = sessions.reduce((sum, s) => sum + s.activeSeconds, 0);
+
+    if (totalActiveSeconds < 60) {
+      res.status(403).json({ error: 'You must complete at least 1 minute of active study time to leave a review.' });
+      return;
+    }
+
+    const review = await prisma.review.create({
+      data: {
+        userId,
+        name: name || req.user!.name || 'Anonymous Student',
+        role: role || 'Student',
+        text,
+        rating: Math.max(1, Math.min(5, Number(rating))),
+        category,
+      },
+    });
+
+    res.status(201).json({ success: true, review });
+  } catch (error: any) {
+    logger.error('Failed to create review: %s', error.message);
+    res.status(500).json({ error: 'Internal server error while saving review.' });
+  }
+});
+
+// Generate weakness quiz targeting gaps identified in query history and flashcards
+router.post('/binders/:binderId/weakness-quiz', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const binderId = req.params.binderId as string;
+    const userId = req.user!.userId;
+
+    const binder = await prisma.binder.findFirst({
+      where: { id: binderId, userId },
+      include: { documents: true },
+    });
+
+    if (!binder) {
+      res.status(404).json({ error: 'Binder not found or unauthorized.' });
+      return;
+    }
+
+    if (binder.documents.length === 0) {
+      res.status(400).json({ error: 'No files are present in the binder. Please upload files before starting.' });
+      return;
+    }
+
+    const history = await prisma.studyHistory.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const flashcards = await prisma.flashcard.findMany({
+      where: { userId, OR: [{ easeFactor: { lt: 2.0 } }, { reps: { lte: 1 } }] },
+      take: 15,
+    });
+
+    const historyContext = history.map(h => `Q: ${h.query}\nA: ${h.response}`).join('\n\n');
+    const flashcardContext = flashcards.map(f => `Front: ${f.front}\nBack: ${f.back} (Interval: ${f.interval}d, Ease: ${f.easeFactor}, Reps: ${f.reps})`).join('\n\n');
+    const documentsText = binder.documents.map(doc => `[Doc: ${doc.name}]\n${doc.content}`).join('\n\n');
+
+    const systemPrompt = `
+You are an Academic Exam Evaluator.
+Analyze the user's study documents along with their query history and flashcard recall performance to identify their main conceptual weaknesses and gaps.
+Generate a custom mock exam containing exactly 5 questions designed to test and reinforce their understanding of those weak concepts.
+Include a mix of:
+- Multiple-choice questions (MCQs)
+- Short answer conceptual explanations
+- Debugging or coding challenges (if relevant to the document contents)
+
+Output MUST be a valid JSON array matching the exam schema. Avoid markdown wrapping blocks like \`\`\`json. Output format:
+[
+  {
+    "id": 1,
+    "type": "mcq" | "short" | "code",
+    "question": "question text targeting their identified weakness",
+    "options": ["A", "B", "C", "D"], // Only if type is mcq, empty array if not
+    "correctAnswer": "correct response outline or explanation"
+  }
+]
+    `.trim();
+
+    const promptText = `
+STUDY DOCUMENTS:
+${documentsText}
+
+USER QUERY HISTORY:
+${historyContext || 'No queries yet.'}
+
+USER FLASHCARD PERFORMANCE:
+${flashcardContext || 'No weak flashcards yet.'}
+    `.trim();
+
+    const response = await gemini.generateResponse(
+      [{ role: 'user', content: promptText }],
+      systemPrompt,
+      true,
+      examSchema
+    );
+
+    await recordTokenUsage(userId, 'gemini-3.1-flash-lite', response.usage, 'Weakness Quiz Generation');
+
+    let cleanJsonText = response.text.trim();
+    if (cleanJsonText.startsWith('```')) {
+      cleanJsonText = cleanJsonText.replace(/^```(json)?/, '').replace(/```$/, '').trim();
+    }
+
+    try {
+      const examQuestions = JSON.parse(cleanJsonText);
+      res.json({ questions: examQuestions });
+    } catch (parseErr) {
+      logger.error('JSON parsing failure from Weakness Quiz Generator output: %s\nRaw output: %s', parseErr, response.text);
+      res.status(500).json({ error: 'Failed to generate weakness quiz.' });
+    }
+  } catch (error: any) {
+    logger.error('Weakness Quiz Generator Error: %s', error.stack || error.message);
+    res.status(500).json({ error: 'Failed to generate weakness quiz.' });
   }
 });
 

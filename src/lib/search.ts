@@ -1,4 +1,52 @@
 import logger from './logger';
+import dns from 'dns';
+import { promisify } from 'util';
+
+const dnsLookup = promisify(dns.lookup);
+
+function isPrivateIpAddress(ip: string): boolean {
+  if (/^(127\.|10\.|192\.168\.|169\.254\.)/.test(ip)) {
+    return true;
+  }
+  const parts = ip.split('.');
+  if (parts.length === 4) {
+    const first = parseInt(parts[0], 10);
+    const second = parseInt(parts[1], 10);
+    if (first === 172 && second >= 16 && second <= 31) {
+      return true;
+    }
+    if (first === 0) {
+      return true;
+    }
+  }
+  if (ip === '::1' || ip === '0:0:0:0:0:0:0:1') {
+    return true;
+  }
+  if (ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd00:')) {
+    return true;
+  }
+  return false;
+}
+
+async function isSafeUrl(urlStr: string): Promise<boolean> {
+  try {
+    const parsed = new URL(urlStr);
+    const hostname = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    if (hostname === 'localhost' || hostname === 'loopback') {
+      return false;
+    }
+    const lookupResult = await dnsLookup(hostname).catch(() => null);
+    if (!lookupResult || !lookupResult.address) {
+      return true; // proceed to let normal fetch fail
+    }
+    return !isPrivateIpAddress(lookupResult.address);
+  } catch (e) {
+    return false;
+  }
+}
 
 export interface SearchResult {
   title: string;
@@ -359,6 +407,11 @@ export async function searchWeb(query: string): Promise<SearchResult[]> {
  */
 export async function fetchPageContent(url: string): Promise<string> {
   try {
+    const safe = await isSafeUrl(url);
+    if (!safe) {
+      logger.warn('SSRF Prevention: Blocked fetching private/local URL: %s', url);
+      return '';
+    }
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

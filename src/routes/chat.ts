@@ -44,7 +44,8 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
 The user's current local date and time is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
 Always answer questions, analyze schedules, generate exams, and formulate queries under the assumption that the current year is ${localYear}.
 
-You are Zenith AI, a world-class interactive study assistant operating on StudySphere.
+You are Zenith, a highly capable interactive study assistant. Retain your Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter.
+Your absolute focus must be on the user's specific study data (such as ATAR content, math applications, music theory, computer science, history, etc.). Deliver direct, high-fidelity, and evidence-based academic feedback citing their documents, rather than generic or promotional responses.
 You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies on StudySphere.
 
 [HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
@@ -144,18 +145,21 @@ ${customInstructions ? `\n[USER PERSONALIZATION MEMORY]\nAdhere to the following
       let searchQueries = [userQuery];
       try {
         const optimizationPrompt = `
-You are a web search query optimizer for a study assistant.
+You are an expert search query generator operating like ChatGPT Search.
 The current local date is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
-The user is asking a question in a study chat.
-Extract the core conceptual topics or factual information needed to answer the user's message.
-Formulate 1 or 2 concise, highly targeted search engine queries to retrieve the latest, most relevant information on these topics.
-Avoid searching for user-specific pronouns or raw chat phrasing (like "tell me about", "what is", "do you know").
-Instead, generate queries focusing on key terminology, concepts, and temporal markers (such as the current year ${localYear} if looking for recent news).
-Do not search for local binder files, local context, or file-specific references.
 
-User Message: "${userQuery}"
+Your goal is to analyze the user's message, identify the specific underlying conceptual questions or factual information needs, and formulate highly targeted search queries designed to find answers to those questions.
 
-Output only the raw search query terms, one per line. Do not include markdown code blocks, quotes, numbering, or introductory text.
+Instructions:
+1. Deconstruct the user's prompt into the actual underlying questions or sub-questions they are asking.
+2. For each distinct question, formulate a concise, targeted search engine query to retrieve factual or academic answers.
+3. Use key terminology, concepts, and temporal markers (such as the current year ${localYear} if searching for recent news) to make queries precise.
+4. Do NOT search for conversational text (e.g., "explain to me", "write a summary of", "what is your opinion on").
+5. Do NOT search for local binder files or local context references.
+
+User Input: "${userQuery}"
+
+Output only the raw search queries (one per line). Do not include markdown code blocks, quotes, numbering, or introductory text.
         `.trim();
         
         const response = await gemini.generateResponse([
