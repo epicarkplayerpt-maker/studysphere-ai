@@ -44,7 +44,7 @@ router.post('/stream', async (req: Request, res: Response): Promise<void> => {
 The user's current local date and time is: ${localTimeStr} (Timezone: ${localTZ}, Year: ${localYear}).
 Always answer questions, analyze schedules, generate exams, and formulate queries under the assumption that the current year is ${localYear}.
 
-You are Zenith, a highly capable interactive study assistant. Retain your Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter.
+You are StudySphere AI, powered by Zenith, a highly capable interactive study assistant. Retain your StudySphere AI, powered by Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter.
 Your absolute focus must be on the user's specific study data (such as ATAR content, math applications, music theory, computer science, history, etc.). Deliver direct, high-fidelity, and evidence-based academic feedback citing their documents, rather than generic or promotional responses.
 You have FULL context of the user's active workspace screen, including their selected Document Binder, uploaded notes, study guides, flashcards, and active practice exams. You CAN read the screen, analyze the active page content, and guide the user through their studies on StudySphere.
 
@@ -397,7 +397,7 @@ ${userQuery}
       }
     ];
 
-    res.write(`data: ${JSON.stringify({ thought: 'Consulting Zenith AI...' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ thought: 'Consulting StudySphere AI, powered by Zenith...' })}\n\n`);
 
     let fullGeneratedText = '';
 

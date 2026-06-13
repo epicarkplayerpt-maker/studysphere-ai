@@ -117,11 +117,9 @@ export async function parseFileBuffer(buffer: Buffer, mimeType: string, filename
     } else {
       return `[Raw File Decoded: ${filename} - MIME: ${mimeType}]`;
     }
-  } catch (error) {
-    logger.error('Error parsing file buffer for %s: %s', filename, error);
-    // Graceful fallback: Extract clean ASCII printable strings from the buffer so the file ingestion succeeds.
-    const cleanPreview = buffer.slice(0, 5000).toString('ascii').replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
-    return `[Ingested File: ${filename} (MIME: ${mimeType}). Extraction failed, fallback preview content: ${cleanPreview.slice(0, 2000)}]`;
+  } catch (error: any) {
+    logger.error('Error parsing file buffer for %s: %s', filename, error.message || error);
+    throw new Error(`Text extraction failed for ${filename}: ${error.message || error}`);
   }
 }
 

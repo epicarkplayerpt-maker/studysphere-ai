@@ -81,8 +81,8 @@ Never summarize code files, truncate explanations, or use placeholders (like "//
 Output every single line of code completely when requested.
 
 [IDENTITY & ANTI-HALLUCINATION DIRECTIVE]
-1. You are Zenith, a highly capable study assistant. If the user asks for your name or who you are, you MUST answer: "I am Zenith, an interactive study assistant."
-2. NEVER mention "Google Gemini" or "Gemini" as your name or identity. You are Zenith.
+1. You are StudySphere AI, powered by Zenith, a highly capable study assistant. If the user asks for your name or who you are, you MUST answer: "I am StudySphere AI, powered by Zenith, an interactive study assistant."
+2. NEVER mention "Google Gemini" or "Gemini" as your name or identity. You are StudySphere AI, powered by Zenith.
 3. STRICT NO-HALLUCINATION RULE: If the user asks a question whose exact answer is not present in the provided document context, web search results, or your factual database, or if you do not know the answer, you must state: "I do not have access to that information in the provided context." Do not fabricate or invent answers.
       `.trim();
 
@@ -114,7 +114,7 @@ Output every single line of code completely when requested.
         usage: result.response.usageMetadata,
       };
     } catch (error: any) {
-      logger.error('Zenith AI Non-Stream Generation Failure: %s', error.message);
+      logger.error('StudySphere AI, powered by Zenith Non-Stream Generation Failure: %s', error.message);
       throw error;
     }
   }
@@ -138,8 +138,8 @@ Never summarize code files, truncate explanations, or use placeholders (like "//
 Output every single line of code completely when requested.
 
 [IDENTITY & ANTI-HALLUCINATION DIRECTIVE]
-1. You are Zenith, a highly capable study assistant. If the user asks for your name or who you are, you MUST answer: "I am Zenith, an interactive study assistant."
-2. NEVER mention "Google Gemini" or "Gemini" as your name or identity. You are Zenith.
+1. You are StudySphere AI, powered by Zenith, a highly capable study assistant. If the user asks for your name or who you are, you MUST answer: "I am StudySphere AI, powered by Zenith, an interactive study assistant."
+2. NEVER mention "Google Gemini" or "Gemini" as your name or identity. You are StudySphere AI, powered by Zenith.
 3. STRICT NO-HALLUCINATION RULE: If the user asks a question whose exact answer is not present in the provided document context, web search results, or your factual database, or if you do not know the answer, you must state: "I do not have access to that information in the provided context." Do not fabricate or invent answers.
       `.trim();
 
@@ -170,7 +170,7 @@ Output every single line of code completely when requested.
 
       return { text: fullText, usage };
     } catch (error: any) {
-      logger.error('Zenith AI Stream Generation Failure: %s', error.message);
+      logger.error('StudySphere AI, powered by Zenith Stream Generation Failure: %s', error.message);
       throw error;
     }
   }
@@ -213,7 +213,7 @@ ${query}
       }
       return result.embedding.values;
     } catch (error: any) {
-      logger.error('Zenith AI Single Embedding Generation Failure: %s', error.message);
+      logger.error('StudySphere AI, powered by Zenith Single Embedding Generation Failure: %s', error.message);
       throw error;
     }
   }
@@ -237,7 +237,7 @@ ${query}
       }
       return response.embeddings.map(e => e.values);
     } catch (error: any) {
-      logger.error('Zenith AI Batch Embedding Generation Failure: %s', error.message);
+      logger.error('StudySphere AI, powered by Zenith Batch Embedding Generation Failure: %s', error.message);
       throw error;
     }
   }

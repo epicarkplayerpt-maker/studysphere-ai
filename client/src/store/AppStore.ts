@@ -136,6 +136,9 @@ export const dispatchAction = async (action: string, payload: any) => {
   
   switch (action) {
     case 'SET_USER':
+      if (payload) {
+        payload.authenticated = true;
+      }
       store.setState({ user: payload });
       break;
     case 'SET_BINDERS':

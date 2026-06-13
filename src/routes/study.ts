@@ -21,7 +21,7 @@ const router = Router();
 const gemini = new GeminiService();
 
 /**
- * Helper to record token usage for Zenith AI API interactions
+ * Helper to record token usage for StudySphere AI, powered by Zenith API interactions
  */
 export async function recordTokenUsage(
   userId: string,
@@ -52,7 +52,7 @@ export async function recordTokenUsage(
 
 
 // ==========================================
-// Zenith AI JSON Schemas
+// StudySphere AI, powered by Zenith JSON Schemas
 // ==========================================
 
 const flashcardsSchema = {
@@ -256,6 +256,54 @@ router.delete('/binders/:id', async (req: Request, res: Response): Promise<void>
 // ==========================================
 
 // Helper to validate and sanitize uploaded files to prevent malware and injection
+// Helper to verify magic bytes and content integrity to block corrupt payloads
+function verifyFileIntegrity(file: Express.Multer.File, ext: string): { valid: boolean; error?: string } {
+  const buffer = file.buffer;
+  if (!buffer || buffer.length === 0) {
+    return { valid: false, error: 'Empty file payload or corrupted.' };
+  }
+
+  // 1. PDF Verification
+  if (ext === 'pdf') {
+    const header = buffer.slice(0, 1024).toString('ascii');
+    if (!header.includes('%PDF-')) {
+      return { valid: false, error: 'File integrity check failed: Invalid PDF signature.' };
+    }
+  }
+
+  // 2. DOCX / PPTX / XLSX (ZIP) Verification
+  if (['docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'zip'].includes(ext)) {
+    if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+      return { valid: false, error: `File integrity check failed: Invalid ZIP/Office signature for .${ext}.` };
+    }
+  }
+
+  // 3. Text Files Verification (block binary masquerading as text)
+  const textExtensions = [
+    'txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'sh',
+    'yaml', 'yml', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'sql', 'xml', 'csv', 'tsv'
+  ];
+  if (textExtensions.includes(ext)) {
+    const checkLength = Math.min(buffer.length, 4096);
+    let nullCount = 0;
+    let controlCount = 0;
+    for (let i = 0; i < checkLength; i++) {
+      const byte = buffer[i];
+      if (byte === 0x00) {
+        nullCount++;
+      } else if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) {
+        controlCount++;
+      }
+    }
+    if (nullCount > 0 || (checkLength > 0 && controlCount / checkLength > 0.15)) {
+      return { valid: false, error: 'File integrity check failed: Plain text file contains invalid control or binary characters.' };
+    }
+  }
+
+  return { valid: true };
+}
+
+// Helper to validate and sanitize uploaded files to prevent malware and injection
 function validateAndSanitizeFile(file: Express.Multer.File): { safeName: string; error?: string } {
   const allowedExtensions = [
     // Documents & Text
@@ -265,7 +313,7 @@ function validateAndSanitizeFile(file: Express.Multer.File): { safeName: string;
     // Web & Code
     'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'py', 'sh', 'yaml', 'yml',
     'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'sql', 'xml', 'swift', 'rb', 'php', 'pl',
-    // Images & Media (Expanded with modern and common formats)
+    // Images & Media
     'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico', 'avif', 'heic', 'heif', 'tiff', 'psd',
     // Audio & Video
     'mp3', 'wav', 'm4a', 'aac', 'ogg', 'mp4', 'mov', 'avi', 'mkv',
@@ -294,8 +342,6 @@ function validateAndSanitizeFile(file: Express.Multer.File): { safeName: string;
   }
 
   // 2. Validate MIME type
-  // If it's a document/binary, verify type. If it's plain text or source code, bypass strict MIME check 
-  // since different browsers/OS detect mimetypes of code files differently.
   const isPdfOrDocx = ext === 'pdf' || ext === 'docx' || ext === 'doc';
   if (isPdfOrDocx) {
     const allowedDocMimeTypes = [
@@ -309,38 +355,22 @@ function validateAndSanitizeFile(file: Express.Multer.File): { safeName: string;
     }
   }
 
-  // 3. Signature (Magic Bytes) Verification for PDFs and DOCXs
-  const buffer = file.buffer;
-  if (!buffer || buffer.length < 4) {
-    return { safeName, error: 'Blocked: File payload is empty or corrupted.' };
-  }
-
-  // PDF signature check: %PDF
-  if (ext === 'pdf') {
-    const isPdf = buffer.slice(0, 1024).toString('ascii').includes('%PDF');
-    if (!isPdf) {
-      logger.warn('PDF signature check mismatch for %s, passing to parser.', safeName);
-    }
-  }
-
-  // DOCX signature check: PK ZIP
-  if (ext === 'docx') {
-    const isDocx = buffer[0] === 0x50 && buffer[1] === 0x4b;
-    if (!isDocx) {
-      logger.warn('DOCX signature check mismatch for %s, passing to parser.', safeName);
-    }
+  // 3. Signature (Magic Bytes) Verification & Content Integrity Check
+  const integrity = verifyFileIntegrity(file, ext);
+  if (!integrity.valid) {
+    return { safeName, error: integrity.error };
   }
 
   return { safeName };
 }
 
 /**
- * Helper to recursively summarize long document texts using Zenith AI
+ * Helper to recursively summarize long document texts using StudySphere AI, powered by Zenith
  */
 async function generateRecursiveSummary(text: string, filename: string, userId: string): Promise<string> {
   const maxSegmentLength = 15000;
   if (text.length <= maxSegmentLength) {
-    const systemInstruction = `You are Zenith AI's high-fidelity summarizer. Synthesize the provided document text into a comprehensive, authoritative summary of about 300-500 words. Capture all key facts, terminology, structure, and formulas.`;
+    const systemInstruction = `You are StudySphere AI, powered by Zenith's high-fidelity summarizer. Synthesize the provided document text into a comprehensive, authoritative summary of about 300-500 words. Capture all key facts, terminology, structure, and formulas.`;
     const prompt = `Generate a high-fidelity summary for the file "${filename}":\n\n${text}`;
     const result = await gemini.generateResponse([{ role: 'user', content: prompt }], systemInstruction);
     await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Document Summarization');
@@ -358,7 +388,7 @@ async function generateRecursiveSummary(text: string, filename: string, userId: 
   const summaries: string[] = [];
   for (let idx = 0; idx < segments.length; idx++) {
     const seg = segments[idx];
-    const systemInstruction = `You are Zenith AI's high-fidelity summarizer. Synthesize this section of the document into a concise summary retaining key facts.`;
+    const systemInstruction = `You are StudySphere AI, powered by Zenith's high-fidelity summarizer. Synthesize this section of the document into a concise summary retaining key facts.`;
     const prompt = `Summarize section ${idx + 1} of the file "${filename}":\n\n${seg}`;
     const result = await gemini.generateResponse([{ role: 'user', content: prompt }], systemInstruction);
     await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Document Summarization');
@@ -471,8 +501,66 @@ router.post('/binders/:binderId/documents', upload.array('files', 10), async (re
       file.originalname = validation.safeName;
     }
 
+// Helper to autonomously categorize and summarize ingested document content
+async function categorizeAndSummarizeDocument(content: string, filename: string, userId: string): Promise<{ category: string; keyConcepts: string }> {
+  const systemInstruction = `
+You are StudySphere AI, powered by Zenith, an expert academic content evaluator.
+Analyze the provided document content and:
+1. Classify the document into one of the following main disciplines: STEM, Humanities, Law, or Other.
+2. Provide a specific sub-topic name (e.g. "Computer Science / Data Structures", "Molecular Biology", "Ancient History").
+3. Extract the absolute core "Key Concepts" as a grammatically perfect, concise bulleted list focused on utility (maximum 5-8 points).
+4. Do not include any marketing fluff, introductory text, or placeholders. Return ONLY a valid JSON object matching the schema:
+{
+  "category": "STEM | Humanities | Law | Other",
+  "subTopic": "Sub-topic Name",
+  "keyConcepts": [
+    "Definition/explanation of concept 1",
+    "Definition/explanation of concept 2"
+  ]
+}
+`.trim();
+
+  try {
+    const prompt = `Analyze this file: ${filename}\n\nContent Preview:\n${content.substring(0, 10000)}`;
+    const result = await gemini.generateResponse([{ role: 'user', content: prompt }], systemInstruction);
+    await recordTokenUsage(userId, 'gemini-3.1-flash-lite', result.usage, 'Background Classification');
+
+    const text = result.text.trim();
+    const startIdx = text.indexOf('{');
+    const endIdx = text.lastIndexOf('}');
+    if (startIdx === -1 || endIdx === -1) {
+      throw new Error('No JSON brackets found in model output.');
+    }
+    const jsonStr = text.substring(startIdx, endIdx + 1);
+    const parsed = JSON.parse(jsonStr);
+
+    const category = `${parsed.category || 'Other'} (${parsed.subTopic || 'General'})`;
+    const keyConcepts = Array.isArray(parsed.keyConcepts)
+      ? parsed.keyConcepts.map((c: string) => `• ${c}`).join('\n')
+      : '• Key concepts could not be extracted.';
+
+    return { category, keyConcepts };
+  } catch (error: any) {
+    logger.error('Failed to autonomously categorize and summarize document %s: %s', filename, error.message);
+    return {
+      category: 'Other (General Study)',
+      keyConcepts: '• Summary and key concepts extraction bypassed due to parser limitations.'
+    };
+  }
+}
+
     for (const file of files) {
-      let parsedText = await parseFileBuffer(file.buffer, file.mimetype, file.originalname);
+      let parsedText = '';
+      try {
+        parsedText = await parseFileBuffer(file.buffer, file.mimetype, file.originalname);
+        if (!parsedText || parsedText.trim().length === 0) {
+          throw new Error('Empty text content extracted.');
+        }
+      } catch (err: any) {
+        logger.error('File parsing error on upload for %s: %s', file.originalname, err.message);
+        res.status(400).json({ error: `Text extraction failed for ${file.originalname}: ${err.message || ''}` });
+        return;
+      }
       
       // Perform recursive summarization if text is long enough
       let summaryText = '';
@@ -481,7 +569,7 @@ router.post('/binders/:binderId/documents', upload.array('files', 10), async (re
         try {
           summaryText = await generateRecursiveSummary(parsedText, file.originalname, userId);
           logger.info('Generated recursive summary for %s: %d characters.', file.originalname, summaryText.length);
-          parsedText = `[Project Zenith Recursive Document Summary]:\n${summaryText}\n\n[Full Document Text]:\n${parsedText}`;
+          parsedText = `[StudySphere AI, powered by Zenith Recursive Document Summary]:\n${summaryText}\n\n[Full Document Text]:\n${parsedText}`;
         } catch (sumErr: any) {
           logger.error('Failed to generate recursive summary: %s', sumErr.message);
         }
@@ -527,7 +615,16 @@ router.post('/binders/:binderId/documents', upload.array('files', 10), async (re
         }
       }
 
-      createdDocs.push({ id: doc.id, name: doc.name, size: parsedText.length });
+      // Autonomously categorize and extract key concepts
+      const analysis = await categorizeAndSummarizeDocument(parsedText, file.originalname, userId);
+
+      createdDocs.push({
+        id: doc.id,
+        name: doc.name,
+        size: parsedText.length,
+        category: analysis.category,
+        keyConcepts: analysis.keyConcepts,
+      });
     }
 
     // Auto-generate flashcards in the background asynchronously
@@ -925,7 +1022,7 @@ router.post('/query', validateRequest(querySchema), async (req: Request, res: Re
     );
 
     const systemInstruction = `
-You are Zenith, a highly capable study assistant. Retain your Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter. Your absolute focus must be on the user's specific study data (such as ATAR content, math applications, music theory, history, computer science, etc.). Deliver direct, high-fidelity, and evidence-based academic feedback citing their documents and context, rather than generic or promotional responses. Never refer to yourself as Google Gemini or a Gemini model.
+You are StudySphere AI, powered by Zenith, a highly capable study assistant. Retain your StudySphere AI, powered by Zenith identity but avoid excessive self-branding, marketing fluff, or promotional chatter. Your absolute focus must be on the user's specific study data (such as ATAR content, math applications, music theory, history, computer science, etc.). Deliver direct, high-fidelity, and evidence-based academic feedback citing their documents and context, rather than generic or promotional responses. Never refer to yourself as Google Gemini or a Gemini model.
 Analyze the user query based on the encapsulated files, web results, and scraped contents inside the XML tags.
 
 [HIGH-FIDELITY RETRIEVAL & NO-HALLUCINATION MODE]
@@ -1312,7 +1409,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nIncorporate the fo
       const examQuestions = JSON.parse(cleanJsonText);
       res.json({ questions: examQuestions });
     } catch (parseErr) {
-      logger.error('JSON parsing failure from Zenith AI Exam Generator output: %s\nRaw output: %s', parseErr, response.text);
+      logger.error('JSON parsing failure from StudySphere AI, powered by Zenith Exam Generator output: %s\nRaw output: %s', parseErr, response.text);
       res.status(500).json({ error: 'Failed to format mock exam. Try generating again.' });
     }
   } catch (error: any) {
@@ -1369,7 +1466,7 @@ Output must be a valid JSON object. Do not include markdown formatting blocks li
       const evaluation = JSON.parse(cleanJsonText);
       res.json(evaluation);
     } catch (parseErr) {
-      logger.error('JSON parsing failure from Zenith AI Exam Grader output: %s\nRaw output: %s', parseErr, response.text);
+      logger.error('JSON parsing failure from StudySphere AI, powered by Zenith Exam Grader output: %s\nRaw output: %s', parseErr, response.text);
       res.status(500).json({ error: 'Failed to grade mock exam.' });
     }
   } catch (error: any) {
@@ -1572,7 +1669,7 @@ ${customInstructions ? `\n[USER PERSONALIZATION PREFERENCES]\nAdhere to the foll
       const dialogue = JSON.parse(cleanJsonText);
       res.json({ podcast: dialogue });
     } catch (parseErr) {
-      logger.error('JSON parsing failure from Zenith AI Podcast Generator output: %s\nRaw output: %s', parseErr, response.text);
+      logger.error('JSON parsing failure from StudySphere AI, powered by Zenith Podcast Generator output: %s\nRaw output: %s', parseErr, response.text);
       res.status(500).json({ error: 'Failed to format podcast transcript. Try generating again.' });
     }
   } catch (error: any) {

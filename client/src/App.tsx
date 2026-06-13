@@ -42,7 +42,6 @@ import {
   Headphones,
   Languages,
   Sliders,
-  Lock,
   Settings
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -406,10 +405,10 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
         <div>
           <h2 className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-primary via-accent to-pink-500 bg-clip-text text-transparent flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
-            Project Zenith Workspace Intelligence
+            StudySphere AI, powered by Zenith - Workspace Intelligence
           </h2>
           <p className="text-[11px] text-muted">
-            Real-time PostgreSQL analytics, active sessions, Zenith AI token monitoring, and design prompt suites.
+            Real-time PostgreSQL analytics, active sessions, StudySphere AI, powered by Zenith token monitoring, and design prompt suites.
           </p>
         </div>
         <div className="flex items-center gap-2 mt-2 md:mt-0">
@@ -570,7 +569,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
         <div className="lg:col-span-5 bg-secondary border border-border rounded-2xl p-4 flex flex-col animate-slide-up [animation-delay:0.25s]">
           <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5 mb-3">
             <Zap className="h-3.5 w-3.5 text-purple-500" />
-            Zenith AI API Footprint
+            StudySphere AI, powered by Zenith - API Footprint
           </h3>
 
           <div className="space-y-4 overflow-y-auto max-h-[350px] flex-1 pr-1 scrollbar-thin">
@@ -634,7 +633,7 @@ function AdminMetricsView({ metrics, error, showToast, playSoundEffect }: AdminM
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                Zenith UI Asset Prompts Hub
+                StudySphere AI, powered by Zenith - UI Asset Prompts Hub
               </h3>
               <p className="text-[10px] text-muted">
                 10 distinct high-fidelity image generator prompts for UI icons, nodes, and ambient dashboard textures.
@@ -866,7 +865,12 @@ export default function App() {
   };
 
   const user = useAppStore(s => s.user);
-  const setUser = (val: any) => store.setState({ user: val });
+  const setUser = (val: any) => {
+    if (val) {
+      val.authenticated = true;
+    }
+    store.setState({ user: val });
+  };
 
   const viewingWorkspace = useAppStore(s => s.viewingWorkspace);
   const setViewingWorkspace = (val: boolean | ((prev: boolean) => boolean)) => {
@@ -1526,7 +1530,7 @@ export default function App() {
     try {
       setChatMessages(prev => [...prev, {
         role: 'assistant',
-        content: `⚙️ **Zenith Agentic Action**: Ingested \`${fileName}\`. Auto-drafting study syllabus and content briefing summary...`
+        content: `⚙️ **StudySphere AI, powered by Zenith - Agentic Action**: Ingested \`${fileName}\`. Auto-drafting study syllabus and content briefing summary...`
       }]);
 
       const res = await fetch(`/api/study/binders/${binderId}/guide`, {
@@ -2380,7 +2384,7 @@ export default function App() {
           },
         }));
       })
-      .then(() => {
+      .then((res: any) => {
         setUploads(prev => ({
           ...prev,
           [file.name]: {
@@ -2393,8 +2397,12 @@ export default function App() {
         fetchDocuments();
         fetchBinders();
         
-        // Post ingestion message directly to chat
-        const autoMsgContent = `Uploaded and ingested \`${file.name}\`. Zenith AI has parsed the layout and added it to your active study context.`;
+        // Post detailed ingestion message containing category & key concepts directly to chat
+        const docInfo = res?.documents?.find((d: any) => d.name === file.name) || res?.documents?.[0];
+        const category = docInfo?.category || 'Other (General Study)';
+        const keyConcepts = docInfo?.keyConcepts || '• Summary and key concepts extraction bypassed.';
+        
+        const autoMsgContent = `### 📥 Document Ingested: \`${file.name}\`\n\n**Discipline/Category**: ${category}\n\n**Key Concepts**:\n${keyConcepts}\n\n*StudySphere AI, powered by Zenith has parsed the layout and added it to your active study context.*`;
         setChatMessages(prev => [...prev, { role: 'system', content: autoMsgContent }]);
 
         if (binderId) {
@@ -2992,14 +3000,14 @@ export default function App() {
     const zenithAds = [
       {
         sponsor: "Hostinger / Railway",
-        title: "Deploy Zenith with 1-Click",
+        title: "Deploy StudySphere AI, powered by Zenith with 1-Click",
         desc: "Host PostgreSQL, pgvector, and Express containers globally. High-performance container cloud starting at $5/mo.",
         link: "https://railway.app"
       },
       {
         sponsor: "Notion Workspace",
         title: "AI-Powered Notes Integration",
-        desc: "Organize folders, study guides, and flashcards. Notion Sync coming soon to Project Zenith.",
+        desc: "Organize folders, study guides, and flashcards. Notion Sync coming soon to StudySphere AI, powered by Zenith.",
         link: "https://notion.so"
       },
       {
@@ -3047,7 +3055,7 @@ export default function App() {
         <div className="mt-8 max-w-sm w-full bg-secondary/35 border border-border/40 p-4 rounded-xl text-center relative overflow-hidden backdrop-blur-md shadow-2xl z-10 mx-4 animate-scale-in">
           <div className="absolute top-0 left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-[#6366f1]/40 to-transparent" />
           <div className="flex justify-between items-center mb-1 text-[8px] font-bold text-[#6366f1] tracking-wider uppercase select-none">
-            <span>Zenith Partner</span>
+            <span>StudySphere AI, powered by Zenith Partner</span>
             <span>Sponsored</span>
           </div>
           <h4 className="text-[11px] font-bold text-foreground text-left flex items-center gap-1">
@@ -3153,11 +3161,11 @@ export default function App() {
           
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary border border-border text-xs text-primary font-medium">
             <Zap className="h-3.5 w-3.5 text-accent" />
-            <span>Powered by Zenith AI Streaming</span>
+            <span>StudySphere AI, powered by Zenith</span>
           </div>
 
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight animate-fade-in-up">
-            Study <span className="text-primary">Smarter, Faster</span>, and Relational
+            StudySphere AI: The Autonomous Workspace for High-Performance Learning.
           </h1>
           
           <p className="text-xs md:text-sm text-muted max-w-xl mx-auto leading-relaxed text-muted-foreground animate-fade-in-up" style={{ animationDelay: '100ms' }}>
@@ -3210,7 +3218,7 @@ export default function App() {
 
         {/* Statistics Grid */}
         <section className="pb-16 px-6 max-w-4xl mx-auto w-full z-10 animate-fade-in-up">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { val: "50MB+", label: "Max File Ingest", desc: "PDFs, slides & repos" },
               { val: "SM-2", label: "Recall Algorithm", desc: "Spaced repetition model" },
@@ -3420,6 +3428,14 @@ export default function App() {
             <div className="flex justify-center items-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
+          ) : verifiedReviews.length === 0 ? (
+            <div className="text-center py-12 bg-secondary/35 border border-dashed border-border rounded-2xl max-w-sm mx-auto space-y-3 p-6 shadow-sm">
+              <MessageSquare className="h-8 w-8 text-primary/45 mx-auto animate-pulse" />
+              <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Be the first to review!</h3>
+              <p className="text-[10.5px] text-muted leading-relaxed">
+                No verified reviews exist yet. Completed 60 seconds of active study time? Sign in and share your experience to help other students!
+              </p>
+            </div>
           ) : filteredTestimonials.length === 0 ? (
             <div className="text-center py-12 bg-secondary/20 border border-border/40 rounded-2xl">
               <p className="text-xs text-muted">No verified reviews found in this category.</p>
@@ -3451,127 +3467,113 @@ export default function App() {
           )}
 
           {/* Review Submission Form Section */}
-          {user ? (
+          {user && user.authenticated === true && reviewEligibility.eligible ? (
             <div className="mt-8 p-6 bg-secondary/35 border border-border/40 rounded-2xl space-y-4 shadow-sm">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-primary" /> Leave a Student Review
               </h3>
-              {reviewEligibility.eligible ? (
-                <form onSubmit={handleReviewSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Name</label>
-                      <input
-                        type="text"
-                        value={reviewName}
-                        onChange={(e) => setReviewName(e.target.value)}
-                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Role / Field of Study</label>
-                      <input
-                        type="text"
-                        value={reviewRole}
-                        onChange={(e) => setReviewRole(e.target.value)}
-                        placeholder="e.g. CS Student, Medical Resident"
-                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Study Discipline</label>
-                      <select
-                        value={reviewCategory}
-                        onChange={(e) => setReviewCategory(e.target.value as any)}
-                        className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
-                      >
-                        <option value="stem">STEM / Engineering</option>
-                        <option value="humanities">Humanities / Arts</option>
-                        <option value="law">Law / Social Sciences</option>
-                        <option value="other">Other / Vocational</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Rating</label>
-                      <div className="flex items-center gap-1.5 h-9">
-                        {[1, 2, 3, 4, 5].map((val) => (
-                          <button
-                            type="button"
-                            key={val}
-                            onClick={() => setReviewRating(val)}
-                            className="text-amber-500 hover:scale-110 active:scale-95 transition"
-                          >
-                            <Star className={`h-5 w-5 ${reviewRating >= val ? 'fill-current' : 'text-muted-foreground/30'}`} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+              <form onSubmit={handleReviewSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Review Feedback</label>
-                    <textarea
-                      value={reviewText}
-                      onChange={(e) => setReviewText(e.target.value)}
-                      rows={3}
-                      placeholder="Share your study experience with StudySphere AI..."
-                      className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition resize-none"
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Name</label>
+                    <input
+                      type="text"
+                      value={reviewName}
+                      onChange={(e) => setReviewName(e.target.value)}
+                      className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
                       required
                     />
                   </div>
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                    className="w-full py-2 bg-primary text-primary-foreground font-semibold rounded-xl text-xs hover:opacity-90 transition disabled:opacity-50"
-                  >
-                    {submittingReview ? 'Submitting...' : 'Submit Verified Review'}
-                  </button>
-                </form>
-              ) : (
-                <div className="space-y-3 p-4 bg-input/10 border border-border/40 rounded-xl">
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-500">
-                    <Lock className="h-4 w-4" />
-                    <span>Review Submission Locked</span>
-                  </div>
-                  <p className="text-[11px] text-muted leading-relaxed">
-                    To maintain study feedback integrity, reviews can only be submitted by verified students who have completed at least **60 seconds** of active study time on the platform.
-                  </p>
                   <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-muted font-mono">
-                      <span>Verified Study Duration</span>
-                      <span>{Math.round(reviewEligibility.totalActiveSeconds)}s / 60s</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-input rounded-full overflow-hidden border border-border/20">
-                      <div
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${Math.min(100, (reviewEligibility.totalActiveSeconds / 60) * 100)}%` }}
-                      />
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Your Role / Field of Study</label>
+                    <input
+                      type="text"
+                      value={reviewRole}
+                      onChange={(e) => setReviewRole(e.target.value)}
+                      placeholder="e.g. CS Student, Medical Resident"
+                      className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Study Discipline</label>
+                    <select
+                      value={reviewCategory}
+                      onChange={(e) => setReviewCategory(e.target.value as any)}
+                      className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition"
+                    >
+                      <option value="stem">STEM / Engineering</option>
+                      <option value="humanities">Humanities / Arts</option>
+                      <option value="law">Law / Social Sciences</option>
+                      <option value="other">Other / Vocational</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Rating</label>
+                    <div className="flex items-center gap-1.5 h-9">
+                      {[1, 2, 3, 4, 5].map((val) => (
+                        <button
+                          type="button"
+                          key={val}
+                          onClick={() => setReviewRating(val)}
+                          className="text-amber-500 hover:scale-110 active:scale-95 transition"
+                        >
+                          <Star className={`h-5 w-5 ${reviewRating >= val ? 'fill-current' : 'text-muted-foreground/30'}`} />
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <p className="text-[9.5px] text-muted italic">
-                    Start a study session in the workspace to automatically update your study timer.
-                  </p>
                 </div>
-              )}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">Review Feedback</label>
+                  <textarea
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    rows={3}
+                    placeholder="Share your study experience with StudySphere AI..."
+                    className="w-full bg-input/40 border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary transition resize-none"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={submittingReview}
+                  className="w-full py-2 bg-primary text-primary-foreground font-semibold rounded-xl text-xs hover:opacity-90 transition disabled:opacity-50"
+                >
+                  {submittingReview ? 'Submitting...' : 'Submit Verified Review'}
+                </button>
+              </form>
             </div>
-          ) : (
-            <div className="mt-8 p-6 bg-secondary/35 border border-border/40 rounded-2xl text-center space-y-2">
-              <Lock className="h-5 w-5 text-muted mx-auto" />
-              <h3 className="text-xs font-bold text-foreground">Write a Review</h3>
-              <p className="text-[10.5px] text-muted max-w-sm mx-auto">
-                Please sign in with Google or access as a Guest to participate in verified student feedback.
-              </p>
-            </div>
-          )}
+          ) : null}
         </section>
 
         {/* Footer */}
         <footer className="mt-auto py-6 border-t border-border text-center text-[10px] text-muted">
-          <p>© 2026 StudySphere AI. Production workspace active. Powered by Zenith Generative AI.</p>
+          <p>© 2026 StudySphere AI, powered by Zenith. Production workspace active.</p>
         </footer>
+
+        {/* Sticky Mobile CTA Bar */}
+        <div className="md:hidden sticky bottom-0 left-0 right-0 p-4 bg-background/90 border-t border-border z-40 shadow-lg flex justify-center items-center backdrop-blur-md">
+          {user ? (
+            <button
+              onClick={() => { setViewingWorkspace(true); playSoundEffect('success'); }}
+              className="w-full py-3 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-xs font-extrabold rounded-xl transition duration-300 shadow-md flex items-center justify-center gap-1.5"
+            >
+              <Zap className="h-4 w-4 text-accent" />
+              <span>Enter Workspace</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => { handleGuestLogin(); playSoundEffect('click'); }}
+              className="w-full py-3 bg-gradient-to-r from-primary via-accent to-indigo-600 hover:opacity-95 text-white text-xs font-extrabold rounded-xl transition duration-300 shadow-md flex items-center justify-center gap-1.5"
+            >
+              <Zap className="h-4 w-4 text-accent" />
+              <span>Enter Workspace (Guest Access)</span>
+            </button>
+          )}
+        </div>
 
       </div>
     );
@@ -3953,7 +3955,7 @@ export default function App() {
                 </button>
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4.5 w-4.5 text-primary animate-pulse" />
-                  <span className="text-xs font-extrabold text-foreground uppercase tracking-wider">Zenith AI Oracle</span>
+                  <span className="text-xs font-extrabold text-foreground uppercase tracking-wider">StudySphere AI, powered by Zenith</span>
                 </div>
               </div>
               
@@ -3986,7 +3988,7 @@ export default function App() {
                 </div>
                 <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
                   <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-                  <span>Zenith Online</span>
+                  <span>StudySphere AI, powered by Zenith Online</span>
                 </div>
               </div>
             )}
@@ -4010,34 +4012,12 @@ export default function App() {
               )}
 
               {chatMessages.length === 0 ? (
-                <div className="h-full flex flex-col justify-center items-center text-center p-6 gap-3 py-12">
+                <div className="h-full flex flex-col justify-center items-center text-center p-6 gap-3 py-12 animate-fade-in">
                   <Sparkles className="h-8 w-8 text-primary/45 animate-spin" style={{ animationDuration: '3s' }} />
                   <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">StudySphere Chat</h3>
                   <p className="text-[11px] text-muted max-w-[250px] leading-relaxed">
-                    Ask Zenith AI questions. Upload documents or click any action below to trigger analysis.
+                    Ask StudySphere AI, powered by Zenith questions. Ingest reference materials to automatically evaluate categories and extract concepts.
                   </p>
-                  
-                  <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-[280px]">
-                    {[
-                      { label: "Summarize concepts", text: "Summarize the key core concepts of this binder in a clear markdown bullet list." },
-                      { label: "Draft review syllabus", text: "Suggest a 5-day structured study syllabus based on these notes." },
-                      { label: "Find conceptual gaps", text: "Scan my notes to find conceptual gaps and weaknesses." }
-                    ].map((chip, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setChatInput(chip.text);
-                          playSoundEffect('click');
-                        }}
-                        className="p-3 bg-input/40 border border-border hover:border-primary/40 hover:bg-secondary rounded-xl text-left text-[11px] text-muted hover:text-foreground transition flex flex-col gap-0.5 shadow-sm animate-fade-in-up"
-                        style={{ animationDelay: `${idx * 0.1}s` }}
-                      >
-                        <span className="font-semibold text-foreground">{chip.label}</span>
-                        <span className="text-[9.5px] text-muted-foreground leading-tight truncate">{chip.text}</span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
               ) : (
                 <div className="space-y-4 py-2">
@@ -4084,7 +4064,7 @@ export default function App() {
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className={`flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
                             <span className="text-[10px] font-bold text-foreground">
-                              {isUser ? 'You' : 'Zenith AI'}
+                              {isUser ? 'You' : 'StudySphere AI, powered by Zenith'}
                             </span>
                             {!isUser && (
                               <span className="text-[8.5px] font-bold text-muted bg-input px-1.5 py-0.2 rounded-full border border-border/40 select-none">
@@ -4248,7 +4228,7 @@ export default function App() {
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={chatStreaming ? 'Zenith AI is thinking...' : 'Ask Zenith AI...'}
+                  placeholder={chatStreaming ? 'StudySphere AI, powered by Zenith is thinking...' : 'Ask StudySphere AI, powered by Zenith...'}
                   disabled={chatStreaming}
                   className="flex-1 bg-transparent border-0 outline-none focus:outline-none text-xs text-foreground placeholder-muted font-medium px-2.5"
                 />
@@ -4469,7 +4449,7 @@ export default function App() {
                     <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl animate-pulse">
                       <Loader2 className="h-8 w-8 text-primary animate-spin" />
                       <span className="text-xs text-foreground font-semibold">Compiling briefing audio script...</span>
-                      <span className="text-[10px] text-muted">Zenith dialogue engine is preparing discussion channels</span>
+                      <span className="text-[10px] text-muted">StudySphere AI, powered by Zenith dialogue engine is preparing discussion channels</span>
                     </div>
                   ) : podcastTurns.length > 0 ? (
                     <div className="space-y-5 animate-fade-in-up">
@@ -4728,7 +4708,7 @@ export default function App() {
               </div>
               <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">Welcome to StudySphere AI!</h3>
               <p className="text-xs text-muted leading-relaxed">
-                Let's take a quick 1-minute guided tour of your study workspace. You'll learn how to upload notes, synthesize files, build podcasts, and schedule spaced-repetition recalls.
+                Let's take a quick 1-minute guided tour of your next-gen workspace. You'll learn how to organize study binders, validate documents, and customize AI behaviors.
               </p>
               <div className="flex justify-end gap-2 pt-1">
                 <button
@@ -4750,10 +4730,10 @@ export default function App() {
           {tourStep === 2 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <FolderPlus className="h-3.5 w-3.5 text-primary" /> 1. Create a Study Binder
+                <FolderPlus className="h-3.5 w-3.5 text-primary" /> 1. Create a Study Binder Context
               </h4>
               <p className="text-xs text-muted leading-relaxed">
-                Binders compile related lecture slides, PDF files, and source code. Click the "+" folder icon in the sidebar folder panel to create your first binder.
+                Binders compile related lecture slides, PDF files, and source code. Click the "+" folder icon in the sidebar folder panel to create your first binder context.
               </p>
               <div className="flex justify-between items-center text-[10px] pt-1">
                 <button onClick={() => { setTourStep(1); playSoundEffect('click'); }} className="text-muted hover:text-foreground font-semibold">Back</button>
@@ -4765,10 +4745,10 @@ export default function App() {
           {tourStep === 3 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Upload className="h-3.5 w-3.5 text-primary" /> 2. Ingest Study Materials
+                <Upload className="h-3.5 w-3.5 text-primary" /> 2. Ingest notes with background validation
               </h4>
               <p className="text-xs text-muted leading-relaxed">
-                Drag slides or lecture files into the dashed ingestion zone in the sidebar. Our parser extracts all text layouts, math formulas, and code snippets.
+                Drag slides or lecture files into the dashed ingestion zone. Our secure pipeline performs integrity validation before autonomously categorizing content and extracting key concepts.
               </p>
               <div className="flex justify-between items-center text-[10px] pt-1">
                 <button onClick={() => { setTourStep(2); playSoundEffect('click'); }} className="text-muted hover:text-foreground font-semibold">Back</button>
@@ -4780,10 +4760,10 @@ export default function App() {
           {tourStep === 4 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-primary" /> 3. Toggle Cognitive Tools
+                <Layers className="h-3.5 w-3.5 text-primary" /> 3. Toggle Central Workspace Tabs
               </h4>
               <p className="text-xs text-muted leading-relaxed">
-                Switch tabs at the top to access the different cognitive study engines: interactive Chat, Master Study Syllabi, Audio Reviews, Smart Study Cards, and Practice Exams.
+                Switch tabs at the top of the workspace to toggle between different study engines: interactive Chat, Master Study Syllabi, Audio Reviews, Smart Study Cards, and Practice Exams.
               </p>
               <div className="flex justify-between items-center text-[10px] pt-1">
                 <button onClick={() => { setTourStep(3); playSoundEffect('click'); }} className="text-muted hover:text-foreground font-semibold">Back</button>
@@ -4795,7 +4775,7 @@ export default function App() {
           {tourStep === 5 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <MessageSquare className="h-3.5 w-3.5 text-primary" /> 4. Ask anything to your notes
+                <MessageSquare className="h-3.5 w-3.5 text-primary" /> 4. Launch interactive study tools inline
               </h4>
               <p className="text-xs text-muted leading-relaxed">
                 Chat with your notes in real-time, generate mind maps, and translate slides. You can even click the "Create Card" link on assistant responses to save them to cards!
@@ -4810,9 +4790,9 @@ export default function App() {
           {tourStep === 6 && (
             <div className="text-center space-y-4 py-2">
               <span className="text-3xl block animate-bounce">🎓🎉</span>
-              <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">You're study ready!</h3>
+              <h3 className="text-xs font-bold text-foreground uppercase tracking-widest">Configure Preferences</h3>
               <p className="text-xs text-muted leading-relaxed">
-                Everything is configured. You can now use guest access or secure Google Sign-In to compile study trackers.
+                Finally, open the Settings panel in the Command Center to configure AI memory preferences, custom instructions, and behavioral filters.
               </p>
               <div className="flex justify-between items-center text-[10px] pt-2 border-t border-border/40">
                 <button onClick={() => { setTourStep(5); playSoundEffect('click'); }} className="text-muted hover:text-foreground font-semibold">Back</button>
