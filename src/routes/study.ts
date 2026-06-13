@@ -1385,6 +1385,21 @@ router.get('/history', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+router.delete('/history', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+
+    await prisma.studyHistory.deleteMany({
+      where: { userId },
+    });
+
+    res.json({ success: true, message: 'Study history cleared successfully.' });
+  } catch (error: any) {
+    logger.error('Failed to clear study history: %s', error.message);
+    res.status(500).json({ error: 'Failed to clear history.' });
+  }
+});
+
 // ==========================================
 // 7. Source Study Guide & Audio Podcast
 // ==========================================

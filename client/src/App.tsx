@@ -743,102 +743,7 @@ const parseMessageArtifacts = (content: string): ArtifactPart[] => {
   return parts.length > 0 ? parts : [{ type: 'text', content }];
 };
 
-// Auto-triggering wrapper for Weaknesses Study Artifact
-interface WeaknessArtifactWrapperProps {
-  binderId: string;
-  gapAnalysis: string;
-  documentLoading: boolean;
-  onScan: () => void;
-  renderContent: () => React.ReactNode;
-}
-
-const WeaknessArtifactWrapper: React.FC<WeaknessArtifactWrapperProps> = ({
-  binderId,
-  gapAnalysis,
-  documentLoading,
-  onScan,
-  renderContent
-}) => {
-  useEffect(() => {
-    if (binderId && !gapAnalysis && !documentLoading) {
-      onScan();
-    }
-  }, [binderId, gapAnalysis, documentLoading, onScan]);
-
-  return <>{renderContent()}</>;
-};
-
-// Auto-triggering wrapper for Audio Review Study Artifact
-interface AudioReviewArtifactWrapperProps {
-  binderId: string;
-  podcastTurns: any[];
-  podcastLoading: boolean;
-  onGenerate: () => void;
-  renderContent: () => React.ReactNode;
-}
-
-const AudioReviewArtifactWrapper: React.FC<AudioReviewArtifactWrapperProps> = ({
-  binderId,
-  podcastTurns,
-  podcastLoading,
-  onGenerate,
-  renderContent
-}) => {
-  useEffect(() => {
-    if (binderId && podcastTurns.length === 0 && !podcastLoading) {
-      onGenerate();
-    }
-  }, [binderId, podcastTurns.length, podcastLoading, onGenerate]);
-
-  return <>{renderContent()}</>;
-};
-
-// Dismissable Artifact Container for close / dismiss handles
-interface DismissableArtifactContainerProps {
-  children: React.ReactNode;
-}
-
-const DismissableArtifactContainer: React.FC<DismissableArtifactContainerProps> = ({ children }) => {
-  const [isOpen, setIsOpen] = useState(true);
-  if (!isOpen) return null;
-  return (
-    <div className="relative group">
-      <button 
-        onClick={() => setIsOpen(false)}
-        className="absolute top-4 right-4 p-1.5 rounded-xl bg-secondary/80 border border-border hover:bg-input text-muted hover:text-foreground opacity-80 hover:opacity-100 transition duration-200 z-10"
-        title="Dismiss Artifact"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-      {children}
-    </div>
-  );
-};
-
-// Auto-triggering wrapper for Syllabus Study Artifact
-interface SyllabusArtifactWrapperProps {
-  binderId: string;
-  sourceGuideText: string;
-  sourceGuideLoading: boolean;
-  onGenerate: () => void;
-  renderContent: () => React.ReactNode;
-}
-
-const SyllabusArtifactWrapper: React.FC<SyllabusArtifactWrapperProps> = ({
-  binderId,
-  sourceGuideText,
-  sourceGuideLoading,
-  onGenerate,
-  renderContent
-}) => {
-  useEffect(() => {
-    if (binderId && !sourceGuideText && !sourceGuideLoading) {
-      onGenerate();
-    }
-  }, [binderId, sourceGuideText, sourceGuideLoading, onGenerate]);
-
-  return <>{renderContent()}</>;
-};
+// Removed unused auto-triggering wrappers and containers to satisfy tsc compiler rules.;
 const getFileIconColor = (filename: string): string => {
   const ext = filename.split('.').pop()?.toLowerCase();
   switch (ext) {
@@ -1953,13 +1858,13 @@ export default function App() {
     if (selectedDocumentName) {
       context += `- Selected Document: "${selectedDocumentName}"\n`;
       if (selectedDocumentText) {
-        context += `- Selected Document Text Preview (first 4000 characters):\n${selectedDocumentText.slice(0, 4000)}\n\n`;
+        context += `- Selected Document Text:\n${selectedDocumentText}\n\n`;
       }
     }
     
     if (activeTab === 'synthesis') {
       if (sourceGuideText) {
-        context += `- Active Synthesized Study Guide Text Preview (first 4000 characters):\n${sourceGuideText.slice(0, 4000)}\n\n`;
+        context += `- Active Synthesized Study Guide Text:\n${sourceGuideText}\n\n`;
       }
       if (podcastTurns.length > 0) {
         context += `- Generated Podcast turns count: ${podcastTurns.length}\n`;
@@ -1975,17 +1880,16 @@ export default function App() {
     }
 
     if (gapAnalysis) {
-      context += `- Active Conceptual Gap Analysis on Screen Preview:\n${gapAnalysis.slice(0, 1500)}\n\n`;
+      context += `- Active Conceptual Gap Analysis on Screen:\n${gapAnalysis}\n\n`;
       if (suggestedPathways.length > 0) {
         context += `- Suggested Learning Pathways: ${suggestedPathways.join(', ')}\n`;
       }
     }
 
     if (chatMessages.length > 0) {
-      context += `- Active Chat Tab Conversation History (Last 10 turns):\n`;
-      const recentMessages = chatMessages.slice(-10);
-      recentMessages.forEach(msg => {
-        context += `  * [${msg.role.toUpperCase()}]: ${msg.content.substring(0, 1000)}\n`;
+      context += `- Active Chat Tab Conversation History:\n`;
+      chatMessages.forEach(msg => {
+        context += `  * [${msg.role.toUpperCase()}]: ${msg.content}\n`;
       });
       context += `\n`;
     }
@@ -2316,276 +2220,114 @@ export default function App() {
     });
   };
 
+  const handleClearHistory = async () => {
+    playSoundEffect('click');
+    setChatMessages([]);
+    
+    if (user && (user as any).isGuest) {
+      const localKey = `studyHistory_guest_${user.userId}`;
+      localStorage.removeItem(localKey);
+      setStudyHistory([]);
+      showToast('Study history cleared locally.', 'success');
+    } else {
+      try {
+        const res = await fetch('/api/study/history', {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (res.ok) {
+          setStudyHistory([]);
+          showToast('Study history cleared from database.', 'success');
+        } else {
+          showToast('Failed to clear study history.', 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Error clearing study history.', 'error');
+      }
+    }
+  };
 
-
-  const renderChatArtifact = (type: string, binderId?: string, questionCount?: number) => {
-    const activeBinderId = binderId || selectedBinderId;
+  const renderChatArtifact = (type: string, _binderId?: string, questionCount?: number) => {
+    
+    let title = "";
+    let desc = "";
+    let icon = Sparkles;
+    let tabName: 'gaps' | 'viewer' | 'guide' | 'podcast' | 'srs' | 'quiz' | 'gaps' | 'viewer' = 'viewer';
     
     switch (type) {
       case 'flashcards':
-        return (
-          <DismissableArtifactContainer>
-            <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
-              <FlashcardSRS soundOn={soundOn} binderId={activeBinderId} />
-            </div>
-          </DismissableArtifactContainer>
-        );
+        title = "Smart Recall Cards";
+        desc = "Spaced repetition flashcards generated from your documents.";
+        icon = Layers;
+        tabName = 'srs';
+        break;
       case 'quiz':
-        return (
-          <DismissableArtifactContainer>
-            <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4">
-              <MockExamEngine 
-                initialBinderId={activeBinderId} 
-                initialQuestionCount={questionCount}
-                onGradeCompleted={(gaps, pathways) => {
-                  setGapAnalysis(gaps);
-                  setSuggestedPathways(pathways);
-                  showToast('Exam completed and weakness report generated.', 'success');
-                }} 
-              />
-            </div>
-          </DismissableArtifactContainer>
-        );
+        title = "Interactive Practice Quiz";
+        desc = `Practice mock exam with ${questionCount || 5} questions and immediate feedback.`;
+        icon = Award;
+        tabName = 'quiz';
+        break;
       case 'weaknesses':
-        return (
-          <DismissableArtifactContainer>
-            <WeaknessArtifactWrapper
-              binderId={activeBinderId}
-              gapAnalysis={gapAnalysis}
-              documentLoading={documentLoading}
-              onScan={handleRunGapAnalysis}
-              renderContent={() => (
-                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-accent" />
-                      <h3 className="text-base font-bold text-foreground font-sans">Study Weakness Finder</h3>
-                    </div>
-                    <button
-                      onClick={handleRunGapAnalysis}
-                      disabled={documentLoading || !activeBinderId}
-                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-                    >
-                      {documentLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                      <span>Scan / Refresh</span>
-                    </button>
-                  </div>
-                  {gapAnalysis ? (
-                    <div className="space-y-4">
-                      <div className="text-xs text-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
-                        <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                          {gapAnalysis}
-                        </ReactMarkdown>
-                      </div>
-                      {suggestedPathways.length > 0 && (
-                        <div className="space-y-2 pt-2 border-t border-border">
-                          <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Suggested Study Pathways:</span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {suggestedPathways.map((path, idx) => (
-                              <div key={idx} className="flex gap-2 p-2 bg-input border border-border rounded-lg text-xs text-foreground font-semibold items-start">
-                                <Check className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                                <span>{path}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                      <p className="text-xs text-muted">No weakness report compiled yet. Click "Scan / Refresh" or take a Practice Exam to identify conceptual gaps.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            />
-          </DismissableArtifactContainer>
-        );
+        title = "Conceptual Weakness Report";
+        desc = "Detailed scan highlighting study gaps and recommended learning paths.";
+        icon = TrendingUp;
+        tabName = 'gaps';
+        break;
       case 'audio-review':
-        return (
-          <DismissableArtifactContainer>
-            <AudioReviewArtifactWrapper
-              binderId={activeBinderId}
-              podcastTurns={podcastTurns}
-              podcastLoading={podcastLoading}
-              onGenerate={handleGeneratePodcast}
-              renderContent={() => (
-                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <Headphones className="h-5 w-5 text-accent" />
-                      <h3 className="text-base font-bold text-foreground font-sans">Audio Study Review</h3>
-                    </div>
-                    <button
-                      onClick={handleGeneratePodcast}
-                      disabled={podcastLoading || !activeBinderId}
-                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-                    >
-                      {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                      <span>Generate Audio</span>
-                    </button>
-                  </div>
-
-                  {podcastLoading ? (
-                    <div className="flex flex-col justify-center items-center py-10 gap-3">
-                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                      <span className="text-sm font-semibold text-foreground">Compiling review audio dialogue...</span>
-                    </div>
-                  ) : podcastTurns.length > 0 ? (
-                    <div className="space-y-4">
-                      <div className="flex flex-col p-4 bg-secondary/60 border border-border rounded-xl space-y-4 shadow-md">
-                        <div className="w-full flex items-center justify-between p-3.5 bg-input/50 border border-border rounded-xl">
-                          <div className="flex items-center gap-3">
-                            <div className={`p-2.5 rounded-lg border ${podcastPlaying ? 'bg-primary/15 border-primary/25 text-primary' : 'bg-secondary border-border text-muted-foreground'}`}>
-                              <Headphones className="h-4.5 w-4.5" />
-                            </div>
-                            <div className="text-left">
-                              <span className="text-[11px] font-bold text-foreground block">Alex & Taylor Briefing</span>
-                              <span className="text-[9.5px] text-muted block">
-                                {podcastPlaying ? 'Playing Audio Review' : 'Audio Review Paused'}
-                              </span>
-                            </div>
-                          </div>
-                          {podcastPlaying && (
-                            <div className="flex items-center gap-0.5 h-3">
-                              <span className="w-0.5 h-full bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.6s' }}></span>
-                              <span className="w-0.5 h-3/4 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.8s' }}></span>
-                              <span className="w-0.5 h-1/2 bg-primary rounded-full animate-pulse" style={{ animationDuration: '0.5s' }}></span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-center gap-4">
-                          {podcastPlaying ? (
-                            <button
-                              onClick={pausePodcastPlayback}
-                              className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
-                            >
-                              <Pause className="h-4 w-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={startPodcastPlayback}
-                              className="p-2 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition"
-                            >
-                              <Play className="h-4 w-4 fill-current" />
-                            </button>
-                          )}
-                          <select
-                            value={podcastSpeed}
-                            onChange={(e) => {
-                              setPodcastSpeed(Number(e.target.value));
-                              if (podcastPlaying) speakDialogue(activePodcastIndex);
-                            }}
-                            className="bg-input border border-border rounded px-2 py-0.5 text-xs text-foreground focus:outline-none"
-                          >
-                            <option value={0.85}>0.85x Speed</option>
-                            <option value={1}>1.0x Speed</option>
-                            <option value={1.2}>1.2x Speed</option>
-                            <option value={1.5}>1.5x Speed</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                        {podcastTurns.map((turn, idx) => {
-                          const isActive = idx === activePodcastIndex;
-                          return (
-                            <div
-                              key={idx}
-                              onClick={() => {
-                                speakDialogue(idx);
-                                if (!podcastPlaying) setPodcastPlaying(true);
-                              }}
-                              className={`p-2 border rounded-lg cursor-pointer text-xs transition ${
-                                isActive
-                                  ? 'bg-primary/15 border-primary text-foreground font-semibold'
-                                  : 'bg-input/40 border-border text-muted hover:text-foreground'
-                              }`}
-                            >
-                              <span className={`font-bold text-[9px] uppercase tracking-wider block mb-0.5 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
-                                {turn.speaker}
-                              </span>
-                              <p className="leading-relaxed">{turn.text}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                      <p className="text-xs text-muted">Generate a text-to-speech dialogue briefing of binder concepts.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            />
-          </DismissableArtifactContainer>
-        );
+        title = "Audio Study Briefing";
+        desc = "NotebookLM-style podcast discussion featuring co-hosts Alex and Taylor.";
+        icon = Headphones;
+        tabName = 'podcast';
+        break;
       case 'syllabus':
-        return (
-          <DismissableArtifactContainer>
-            <SyllabusArtifactWrapper
-              binderId={activeBinderId}
-              sourceGuideText={sourceGuideText}
-              sourceGuideLoading={sourceGuideLoading}
-              onGenerate={handleGenerateStudyGuide}
-              renderContent={() => (
-                <div className="w-full glass-panel p-6 rounded-2xl border border-border shadow-xl my-4 space-y-4 text-left">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <BookMarked className="h-5 w-5 text-accent" />
-                      <h3 className="text-base font-bold text-foreground font-sans">Master Study Syllabus</h3>
-                    </div>
-                    <button
-                      onClick={handleGenerateStudyGuide}
-                      disabled={sourceGuideLoading || !activeBinderId}
-                      className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-                    >
-                      {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                      <span>Generate Syllabus</span>
-                    </button>
-                  </div>
-
-                  {sourceGuideLoading ? (
-                    <div className="flex flex-col justify-center items-center py-10 gap-3">
-                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                      <span className="text-xs text-foreground font-semibold">Creating master study syllabus...</span>
-                    </div>
-                  ) : sourceGuideText ? (
-                    <div className="space-y-3">
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(sourceGuideText);
-                            playSoundEffect('correct');
-                            showToast('Copied syllabus to clipboard!', 'success');
-                          }}
-                          className="px-2 py-1 bg-input border border-border hover:bg-secondary text-[10px] text-foreground rounded flex items-center gap-1 font-semibold transition"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                          <span>Copy Markdown</span>
-                        </button>
-                      </div>
-                      <div className="glass-panel p-4 rounded-xl shadow-md academic-prose text-xs max-h-72 overflow-y-auto bg-input/40 border border-border">
-                        <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                          {sourceGuideText}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-secondary/50 border border-border rounded-xl">
-                      <p className="text-xs text-muted">Generate a structured master study syllabus from all files in this binder.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            />
-          </DismissableArtifactContainer>
-        );
+        title = "Master Study Syllabus";
+        desc = "Structured multi-day study schedule and concept review guide.";
+        icon = BookMarked;
+        tabName = 'guide';
+        break;
       default:
-        return null;
+        title = "Study Artifact";
+        desc = "Workspace tool generated to assist with your studies.";
+        icon = Sparkles;
+        tabName = 'viewer';
     }
+
+    const Icon = icon;
+    const isOpen = rightSidebarOpen && activeRightTab === tabName;
+
+    return (
+      <div className="w-full bg-secondary/80 border border-border/80 p-4 rounded-xl flex items-center justify-between gap-4 my-2.5 backdrop-blur shadow-sm hover:border-primary/30 transition animate-all duration-300">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl flex-shrink-0">
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="text-left min-w-0">
+            <h4 className="text-xs font-bold text-foreground truncate">{title}</h4>
+            <p className="text-[10px] text-muted-foreground truncate max-w-[240px] mt-0.5">{desc}</p>
+          </div>
+        </div>
+        
+        <button
+          onClick={() => {
+            setActiveRightTab(tabName as any);
+            setRightSidebarOpen(true);
+            playSoundEffect('success');
+            if (window.innerWidth < 1024) {
+              setMobileTab('workbench');
+            }
+          }}
+          className={`px-3 py-1.5 text-[10.5px] font-bold rounded-lg transition flex-shrink-0 shadow flex items-center gap-1 ${
+            isOpen
+              ? 'bg-secondary border border-border text-muted-foreground'
+              : 'bg-primary text-primary-foreground hover:opacity-90 active:scale-95'
+          }`}
+        >
+          <span>{isOpen ? 'Open in Split View' : 'Launch Tool'}</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
   };
 
   // Inline Refinement / Human-in-the-Loop Handlers
@@ -3782,52 +3524,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Spaced Repetition Card Navigation */}
-          {/* Smart Study Cards Navigation */}
-          <div className="p-3 bg-input/10 border-t border-border flex-shrink-0">
-            <div className="bg-secondary border border-border p-3 rounded-xl flex flex-col gap-2">
-              <div className="flex justify-between items-center text-[10px]">
-                <span className="font-bold text-foreground">Smart Study Cards</span>
-                <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${dueCardsCount > 0 ? 'bg-red-950/20 border border-red-900/35 text-red-400' : 'bg-input border border-border text-muted'}`}>
-                  {dueCardsCount} due
-                </span>
-              </div>
-              <button
-                onClick={() => { 
-                  setActiveRightTab('srs'); 
-                  setRightSidebarOpen(true); 
-                  playSoundEffect('click'); 
-                  if (window.innerWidth < 1024) setSidebarOpen(false); 
-                }}
-                className="w-full py-1.5 bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] text-[11px] font-bold rounded-lg transition shadow flex items-center justify-center gap-1"
-              >
-                <span>Review Smart Study Cards</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
 
-          {/* Study Weakness Finder Navigation */}
-          <div className="p-3 bg-input/10 border-t border-border flex-shrink-0">
-            <div className="bg-secondary border border-border p-3 rounded-xl flex flex-col gap-2">
-              <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                Study Weakness Finder
-              </span>
-              <button
-                onClick={handleRunGapAnalysis}
-                disabled={!selectedBinderId || documentLoading}
-                className="w-full py-1.5 bg-secondary hover:bg-input border border-border text-foreground text-[11px] font-bold rounded-lg transition active:scale-[0.98] flex items-center justify-center gap-1.5 disabled:opacity-50"
-              >
-                {documentLoading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                ) : (
-                  <Zap className="h-3.5 w-3.5 text-primary" />
-                )}
-                <span>Find Study Weaknesses</span>
-              </button>
-            </div>
-          </div>
 
           {/* Mobile Quick Actions (only visible on mobile/tablet viewports) */}
           <div className="p-3 bg-input/20 border-t border-border flex-shrink-0 sm:hidden space-y-2.5">
@@ -3899,37 +3596,10 @@ export default function App() {
         />
 
         {/* ======================================================== */}
-        {/* COLUMN 2: CENTRAL WORKSPACE (Active Tab view)           */}
+        {/* COLUMN 2: CENTRAL WORKSPACE (Main Chat Stage)           */}
         {/* ======================================================== */}
-        <main className={`flex-1 flex-col overflow-hidden bg-background border-r border-border/40 ${mobileTab === 'workbench' ? 'flex' : 'hidden lg:flex'}`}>
-          {/* Mobile Workspace Tabs Switcher */}
-          <div className="flex lg:hidden bg-secondary border-b border-border p-2 flex-shrink-0 gap-2">
-            <button
-              onClick={() => { setMobileTab('workbench'); playSoundEffect('click'); }}
-              type="button"
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                mobileTab === 'workbench'
-                  ? 'bg-primary text-primary-foreground shadow'
-                  : 'text-muted hover:bg-input hover:text-foreground'
-              }`}
-            >
-              <BookOpen className="h-4 w-4" />
-              <span>Source Workbench</span>
-            </button>
-            <button
-              onClick={() => { setMobileTab('chat'); playSoundEffect('click'); }}
-              type="button"
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                mobileTab === 'chat'
-                  ? 'bg-primary text-primary-foreground shadow'
-                  : 'text-muted hover:bg-input hover:text-foreground'
-              }`}
-            >
-              <Sparkles className="h-4 w-4 animate-pulse text-accent" />
-              <span>Zenith Chat</span>
-            </button>
-          </div>
-          {activeTab === 'admin' && user?.email === 'epicarkplayerpt@gmail.com' ? (
+        {activeTab === 'admin' && user?.email === 'epicarkplayerpt@gmail.com' ? (
+          <main className={`flex-1 flex flex-col overflow-hidden bg-background border-r border-border/40 ${mobileTab === 'workbench' ? 'flex' : 'hidden lg:flex'}`}>
             <div className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full h-full min-h-0 overflow-y-auto relative">
               <AdminMetricsView 
                 metrics={adminMetrics}
@@ -3938,740 +3608,774 @@ export default function App() {
                 playSoundEffect={playSoundEffect}
               />
             </div>
-          ) : (
-            <div className="flex-1 flex flex-col h-full overflow-hidden">
-              {/* Workbench Header & Tab Swapper */}
-              <div className="border-b border-border bg-input/10 flex items-center justify-between p-3 flex-shrink-0">
-                <div 
-                  id="tour-step-tools"
-                  className={`flex overflow-x-auto gap-1.5 scrollbar-none p-1 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
-                >
-                  {[
-                    { id: 'viewer', label: 'PDF/Content Reader', icon: FileText },
-                    { id: 'guide', label: 'Study Syllabus', icon: BookMarked },
-                    { id: 'podcast', label: 'Audio Briefing', icon: Headphones },
-                    { id: 'srs', label: 'Active Recall Cards', icon: Layers },
-                    { id: 'quiz', label: 'Practice Quiz', icon: Award },
-                    { id: 'gaps', label: 'Weakness Finder', icon: TrendingUp },
-                  ].map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeRightTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
-                        className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition whitespace-nowrap transform active:scale-95 duration-200 ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10'
-                            : 'text-muted hover:bg-input hover:text-foreground'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span>{tab.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {/* Right panel toggle in header */}
+          </main>
+        ) : (
+          <main className={`flex-1 flex flex-col overflow-hidden bg-background border-r border-border/40 transition-all duration-300 ease-in-out ${mobileTab === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
+            {/* Header of Central Chat Stage */}
+            <div className="p-4 border-b border-border flex justify-between items-center bg-input/10 flex-shrink-0 pr-2">
+              <div className="flex items-center gap-3">
+                {/* Mobile sidebar hamburger menu trigger */}
                 <button
-                  onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-                  className="p-2 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200 lg:hidden"
-                  title="Toggle Chat sidebar"
+                  onClick={() => { setSidebarOpen(true); playSoundEffect('click'); }}
+                  className="lg:hidden p-1.5 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition"
                 >
-                  <MessageSquare className="h-4.5 w-4.5" />
+                  <Menu className="h-4.5 w-4.5" />
+                </button>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4.5 w-4.5 text-primary animate-pulse" />
+                  <span className="text-xs font-extrabold text-foreground uppercase tracking-wider">Zenith AI Oracle</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {/* Clear History Button */}
+                <button
+                  onClick={handleClearHistory}
+                  className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-input border border-border/40 hover:border-red-500/20 rounded-xl text-[11px] font-bold text-muted hover:text-red-400 transition duration-200"
+                  title="Clear study history"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Clear History</span>
+                </button>
+
+                {/* Workspace Split Panel Toggle */}
+                <button
+                  onClick={() => {
+                    if (window.innerWidth < 1024) {
+                      setMobileTab('workbench');
+                    } else {
+                      setRightSidebarOpen(!rightSidebarOpen);
+                    }
+                    playSoundEffect('click');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-[11px] font-bold transition duration-200 ${
+                    rightSidebarOpen
+                      ? 'bg-primary/15 border-primary/20 text-primary hover:bg-primary/20'
+                      : 'bg-input/40 border-border/40 text-muted hover:text-foreground hover:bg-input'
+                  }`}
+                  title="Toggle Workspace Tools"
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Workspace Tools</span>
                 </button>
               </div>
-
-              {/* Sandboxed Interactive App Container */}
-              <div className="flex-1 overflow-y-auto flex flex-col min-h-0 bg-input/5">
-                <SandboxedApp appName={activeRightTab}>
-                  {/* 1. Document Reader */}
-                  {activeRightTab === 'viewer' && (
-                    <div className="flex-1 flex flex-col min-h-0 bg-input/5 animate-fade-in">
-                      <div className="p-4 border-b border-border bg-input/10 flex items-center justify-between flex-shrink-0">
-                        <span className="text-xs font-bold text-foreground truncate max-w-[280px] sm:max-w-[400px]">
-                          {selectedDocumentName || 'Source Document'}
-                        </span>
-                        {selectedDocumentText && (
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(selectedDocumentText);
-                              playSoundEffect('correct');
-                              showToast('Copied document text to clipboard!', 'success');
-                            }}
-                            className="text-[10px] px-3 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg font-semibold transition"
-                          >
-                            Copy All
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto p-6 space-y-4 font-sans text-sm text-foreground leading-relaxed whitespace-pre-wrap selection:bg-primary/20 select-text">
-                        {documentLoading ? (
-                          <div className="flex flex-col justify-center items-center py-32 gap-3 text-muted">
-                            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                            <span className="text-xs uppercase tracking-widest font-semibold">Extracting text layout...</span>
-                          </div>
-                        ) : selectedDocumentText ? (
-                          <div className="p-4 bg-input border border-border rounded-2xl font-mono text-xs max-h-[70vh] overflow-y-auto leading-normal">
-                            {selectedDocumentText}
-                          </div>
-                        ) : (
-                          <div className="text-center py-28 text-muted space-y-3 px-6 max-w-md mx-auto">
-                            <FileText className="h-10 w-10 text-muted/50 mx-auto" />
-                            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">No Document Selected</h4>
-                            <p className="text-xs leading-normal">Select the preview icon next to any document in the sidebar to review its text chunks.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2. Study Guide / Syllabus */}
-                  {activeRightTab === 'guide' && (
-                    <div className="p-6 space-y-5 animate-fade-in max-w-4xl mx-auto w-full">
-                      <div className="flex justify-between items-center border-b border-border pb-3">
-                        <span className="text-xs font-bold text-foreground">Binder Study Syllabus</span>
-                        {selectedBinderId && documents.length > 0 && (
-                          <button
-                            onClick={handleGenerateStudyGuide}
-                            disabled={sourceGuideLoading}
-                            className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5"
-                          >
-                            {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                            <span>Generate Syllabus</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {!selectedBinderId ? (
-                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
-                          <span className="text-xs text-muted">Select a Document Binder in the sidebar to compile syllabus.</span>
-                        </div>
-                      ) : documents.length === 0 ? (
-                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl space-y-2">
-                          <FileText className="h-8 w-8 text-muted mx-auto" />
-                          <p className="text-xs text-muted">No documents in binder. Upload files to generate a syllabus.</p>
-                        </div>
-                      ) : sourceGuideLoading ? (
-                        <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl">
-                          <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                          <span className="text-xs text-foreground font-semibold">Analyzing binder files...</span>
-                          <span className="text-[10px] text-muted text-center max-w-[280px]">Structuring core review guides, FAQS, glossaries and active recall landmarks</span>
-                        </div>
-                      ) : sourceGuideText ? (
-                        <div className="space-y-4 animate-fade-in-up">
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(sourceGuideText);
-                                playSoundEffect('correct');
-                                showToast('Copied study syllabus to clipboard!', 'success');
-                              }}
-                              className="px-3 py-1.5 bg-input border border-border hover:bg-secondary text-xs text-foreground rounded-lg flex items-center gap-1.5 font-semibold transition"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                              <span>Copy Markdown</span>
-                            </button>
-                          </div>
-                          <div className="glass-panel p-6 rounded-2xl shadow-md academic-prose text-sm max-h-[70vh] overflow-y-auto bg-input/40 border border-border select-text">
-                            <SafeErrorBoundary>
-                              <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                                {sourceGuideText}
-                              </ReactMarkdown>
-                            </SafeErrorBoundary>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto">
-                          <BookMarked className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
-                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Generate Syllabus</h4>
-                          <p className="text-xs text-muted leading-relaxed">
-                            Generate core concept reviews, FAQs, and terminology glossaries from all files in this binder.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 3. AI Podcast / Audio Review */}
-                  {activeRightTab === 'podcast' && (
-                    <div className="p-6 space-y-5 animate-fade-in max-w-2xl mx-auto w-full">
-                      <div className="flex justify-between items-center border-b border-border pb-3">
-                        <span className="text-xs font-bold text-foreground">AI Audio Briefing</span>
-                        {selectedBinderId && documents.length > 0 && (
-                          <button
-                            onClick={handleGeneratePodcast}
-                            disabled={podcastLoading}
-                            className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5"
-                          >
-                            {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                            <span>Compile Briefing</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {!selectedBinderId ? (
-                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
-                          <span className="text-xs text-muted">Select a Document Binder to generate podcast reviews.</span>
-                        </div>
-                      ) : documents.length === 0 ? (
-                        <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl">
-                          <span className="text-xs text-muted">No documents found in binder.</span>
-                        </div>
-                      ) : podcastLoading ? (
-                        <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl">
-                          <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                          <span className="text-xs text-foreground font-semibold">Compiling briefing audio script...</span>
-                          <span className="text-[10px] text-muted">Zenith dialogue engine is preparing discussion channels</span>
-                        </div>
-                      ) : podcastTurns.length > 0 ? (
-                        <div className="space-y-5 animate-fade-in-up">
-                          {/* Pulsing Visualizer Media Widget */}
-                          <div className="flex flex-col items-center justify-center p-6 bg-secondary border border-border rounded-2xl space-y-4 shadow-lg relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-accent/5 pointer-events-none" />
-                            
-                            <div className="relative w-32 h-32 bg-input border border-border rounded-full flex items-center justify-center shadow-inner">
-                              <div className={`w-28 h-28 border-2 border-dashed border-primary/20 rounded-full flex items-center justify-center ${podcastPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '12s' }}>
-                                <div className="w-12 h-12 bg-secondary border border-border rounded-full"></div>
-                              </div>
-                              {podcastPlaying && (
-                                <div className="absolute flex items-center gap-1 h-4">
-                                  <span className="w-0.5 h-full bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                                  <span className="w-0.5 h-3/4 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-                                  <span className="w-0.5 h-1/2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="text-center space-y-1">
-                              <h4 className="text-xs font-bold text-foreground">Interactive Audio Briefing</h4>
-                              <p className="text-[10px] text-muted">Alex & Taylor Co-hosts</p>
-                            </div>
-
-                            <div className="flex items-center gap-4">
-                              {podcastPlaying ? (
-                                <button
-                                  onClick={pausePodcastPlayback}
-                                  className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
-                                >
-                                  <Pause className="h-4.5 w-4.5" />
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={startPodcastPlayback}
-                                  className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
-                                >
-                                  <Play className="h-4.5 w-4.5 fill-current" />
-                                </button>
-                              )}
-                              <select
-                                value={podcastSpeed}
-                                onChange={(e) => {
-                                  setPodcastSpeed(Number(e.target.value));
-                                  if (podcastPlaying) speakDialogue(activePodcastIndex);
-                                }}
-                                className="bg-input border border-border rounded-xl px-2.5 py-1 text-xs text-foreground focus:outline-none transition hover:border-muted-foreground/30"
-                              >
-                                <option value={0.85}>0.85x Speed</option>
-                                <option value={1}>1.0x Speed</option>
-                                <option value={1.2}>1.2x Speed</option>
-                                <option value={1.5}>1.5x Speed</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Scrolling Script turns */}
-                          <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-2 select-text">
-                            {podcastTurns.map((turn, idx) => {
-                              const isActive = idx === activePodcastIndex;
-                              return (
-                                <div
-                                  key={idx}
-                                  id={`podcast-turn-${idx}`}
-                                  onClick={() => {
-                                    speakDialogue(idx);
-                                    if (!podcastPlaying) setPodcastPlaying(true);
-                                  }}
-                                  className={`p-3.5 border rounded-xl cursor-pointer text-xs transition-all duration-300 ${
-                                    isActive
-                                      ? 'bg-primary/10 border-primary/30 shadow-md scale-[1.01]'
-                                      : 'bg-input/40 border-border hover:border-muted-foreground/20 text-muted hover:text-foreground'
-                                  }`}
-                                >
-                                  <span className={`font-bold uppercase tracking-wider text-[9px] block mb-1 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
-                                    {turn.speaker}
-                                  </span>
-                                  <p className="leading-relaxed font-sans">{turn.text}</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto">
-                          <SpeakerIcon className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
-                          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Audio podcast Briefing</h4>
-                          <p className="text-xs text-muted leading-relaxed">
-                            Generate a full text-to-speech discussion overview of your binder files.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 4. Active Recall Cards (SRS) */}
-                  {activeRightTab === 'srs' && (
-                    <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
-                      <div className="border-b border-border pb-3 mb-4 flex items-center justify-between">
-                        <span className="text-xs font-bold text-foreground">Recall Flashcards Deck</span>
-                        <span className="text-[10px] font-bold bg-input border border-border px-3 py-1 rounded-lg text-muted">
-                          {dueCardsCount} cards due
-                        </span>
-                      </div>
-                      <div className="flex-1 overflow-y-auto min-h-0">
-                        <FlashcardSRS soundOn={soundOn} binderId={selectedBinderId} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 5. Practice Exam / Quiz */}
-                  {activeRightTab === 'quiz' && (
-                    <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
-                      <div className="border-b border-border pb-3 mb-4">
-                        <span className="text-xs font-bold text-foreground">Practice Mock Exams</span>
-                      </div>
-                      <div className="flex-1 overflow-y-auto min-h-0">
-                        <MockExamEngine onGradeCompleted={handleExamGradeCompleted} />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 6. Weakness Finder (Stats/Gaps) */}
-                  {activeRightTab === 'gaps' && (
-                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full p-6 space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
-                        
-                        {/* Section 1: History Log */}
-                        <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
-                          <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0">
-                            <History className="h-4 w-4 text-primary" />
-                            <span className="text-xs font-bold text-foreground uppercase tracking-wider">Concept Query History</span>
-                          </div>
-                          <div className="flex-1 overflow-y-auto p-4 space-y-2 select-text">
-                            {studyHistory.length === 0 ? (
-                              <div className="text-center py-10 text-xs text-muted">No query history found. Try asking a question!</div>
-                            ) : (
-                              studyHistory.map(item => (
-                                <div
-                                  key={item.id}
-                                  onClick={() => handleLoadHistoryItem(item)}
-                                  className="p-3 border border-border bg-input/30 hover:border-primary/40 hover:bg-input cursor-pointer transition text-left space-y-1.5 rounded-xl"
-                                >
-                                  <p className="text-xs font-semibold text-foreground truncate">{item.query}</p>
-                                  <div className="flex justify-between items-center text-[10px] text-muted">
-                                    <span>Response loaded</span>
-                                    <span>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Section 2: Real-time Study Weakness Finder */}
-                        <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
-                          <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0 justify-between">
-                            <div className="flex items-center gap-2">
-                              <TrendingUp className="h-4 w-4 text-accent" />
-                              <span className="text-xs font-bold text-foreground uppercase tracking-wider">Weakness Scanner</span>
-                            </div>
-                            <button
-                              onClick={handleRunGapAnalysis}
-                              disabled={documentLoading || !selectedBinderId}
-                              className="px-3 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10.5px] font-bold disabled:opacity-50 transition"
-                            >
-                              Scan
-                            </button>
-                          </div>
-                          
-                          <div className="flex-1 overflow-y-auto p-4 space-y-3 select-text">
-                            {gapAnalysis ? (
-                              <div className="space-y-4">
-                                <div className="bg-input border border-border rounded-xl p-3.5 space-y-2 shadow-inner">
-                                  <div className="flex items-center gap-1.5 text-accent text-xs font-bold">
-                                    <AlertTriangle className="h-4 w-4" />
-                                    <span>WEAKNESSES DETECTED</span>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
-                                    <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
-                                      {gapAnalysis}
-                                    </ReactMarkdown>
-                                  </div>
-                                </div>
-
-                                {suggestedPathways.length > 0 && (
-                                  <div className="space-y-2">
-                                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest pl-1">Suggested Pathways</span>
-                                    <div className="grid grid-cols-1 gap-2">
-                                      {suggestedPathways.map((path, idx) => (
-                                        <div key={idx} className="flex gap-2 p-2.5 bg-input border border-border rounded-xl text-xs text-foreground font-semibold items-start">
-                                          <Check className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                                          <span>{path}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="h-full flex flex-col justify-center items-center text-center p-4 gap-2 py-10">
-                                <TrendingUp className="h-8 w-8 text-muted/50" />
-                                <span className="text-xs font-bold text-foreground">No weaknesses scanned yet</span>
-                                <p className="text-xs text-muted leading-relaxed max-w-[200px]">
-                                  Take a Practice Mock Exam or run a Scan to identify conceptual gaps.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-                    </div>
-                  )}
-                </SandboxedApp>
-              </div>
             </div>
-          )}
-        </main>
+
+            {/* Active Context Banner */}
+            {selectedBinderId && (
+              <div className="flex-shrink-0 bg-secondary/30 border-b border-border/40 px-4 py-2.5 flex items-center justify-between gap-2.5 backdrop-blur-md">
+                <div className="flex items-center gap-2 text-[10.5px]">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </div>
+                  <span className="text-muted truncate max-w-[220px]">
+                    Context: <strong className="text-foreground font-semibold">{binders.find(b => b.id === selectedBinderId)?.name}</strong>
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                  <span>Zenith Online</span>
+                </div>
+              </div>
+            )}
+
+            {/* Chat Feed Messages Area */}
+            <div 
+              className="flex-grow flex-1 overflow-y-auto p-4 space-y-4 min-h-0 scrollbar-none relative animate-all duration-300"
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+            >
+              {dragActive && (
+                <div className="absolute inset-0 z-50 bg-secondary/90 backdrop-blur-md flex flex-col justify-center items-center text-center p-6 border-2 border-dashed border-primary/50 m-2 rounded-2xl animate-fade-in pointer-events-none">
+                  <Upload className="h-10 w-10 text-primary mb-3 animate-bounce" />
+                  <h3 className="text-xs font-bold text-foreground">Drop Context Files to Ingest</h3>
+                  <p className="text-[10px] text-muted max-w-[220px] mt-1">
+                    Ingest PDFs, text documents, or code files directly into your active Study Chat.
+                  </p>
+                </div>
+              )}
+
+              {chatMessages.length === 0 ? (
+                <div className="h-full flex flex-col justify-center items-center text-center p-6 gap-3 py-12">
+                  <Sparkles className="h-8 w-8 text-primary/45 animate-spin" style={{ animationDuration: '3s' }} />
+                  <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">StudySphere Chat</h3>
+                  <p className="text-[11px] text-muted max-w-[250px] leading-relaxed">
+                    Ask Zenith AI questions. Upload documents or click any action below to trigger analysis.
+                  </p>
+                  
+                  <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-[280px]">
+                    {[
+                      { label: "Summarize concepts", text: "Summarize the key core concepts of this binder in a clear markdown bullet list." },
+                      { label: "Draft review syllabus", text: "Suggest a 5-day structured study syllabus based on these notes." },
+                      { label: "Find conceptual gaps", text: "Scan my notes to find conceptual gaps and weaknesses." }
+                    ].map((chip, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setChatInput(chip.text);
+                          playSoundEffect('click');
+                        }}
+                        className="p-3 bg-input/40 border border-border hover:border-primary/40 hover:bg-secondary rounded-xl text-left text-[11px] text-muted hover:text-foreground transition flex flex-col gap-0.5 shadow-sm animate-fade-in-up"
+                        style={{ animationDelay: `${idx * 0.1}s` }}
+                      >
+                        <span className="font-semibold text-foreground">{chip.label}</span>
+                        <span className="text-[9.5px] text-muted-foreground leading-tight truncate">{chip.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  {chatMessages.map((msg, index) => {
+                    const isUser = msg.role === 'user';
+                    const isSystem = msg.role === 'system';
+                    
+                    if (isSystem) {
+                      return (
+                        <div key={index} className="flex justify-center my-2 animate-fade-in-up">
+                          <div className="bg-primary/5 border border-primary/10 rounded-xl px-3 py-1.5 text-[10px] text-primary flex items-center gap-1.5 shadow-sm max-w-[90%] text-center animate-pulse">
+                            <Info className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span>{msg.content}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={index}
+                        className={`flex gap-2.5 text-xs leading-relaxed animate-fade-in-up ${
+                          isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
+                        } max-w-[92%]`}
+                      >
+                        {/* Avatar */}
+                        <div className="flex-shrink-0">
+                          {isUser ? (
+                            user?.picture ? (
+                              <img src={user.picture} alt="User" className="w-8 h-8 rounded-full border border-primary/20 shadow-sm" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-primary/25 border border-primary/30 flex items-center justify-center font-bold text-primary shadow-sm text-xs">
+                                {user?.name ? user.name[0].toUpperCase() : 'U'}
+                              </div>
+                            )
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-extrabold text-primary-foreground shadow shadow-primary/20 text-xs select-none">
+                              Z
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Message Bubble Column */}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className={`flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                            <span className="text-[10px] font-bold text-foreground">
+                              {isUser ? 'You' : 'Zenith AI'}
+                            </span>
+                            {!isUser && (
+                              <span className="text-[8.5px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-full flex items-center gap-0.5 shadow-glow-sm select-none">
+                                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                                99.4% trust
+                              </span>
+                            )}
+                            {!isUser && msg.content && (
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <button
+                                  onClick={() => handleOpenInlineCardModal(msg.content)}
+                                  className="text-[9px] text-accent hover:underline font-semibold transition hover:text-accent-foreground"
+                                >
+                                  Create Card
+                                </button>
+                                <span className="text-muted/40 text-[9px]">•</span>
+                                <button
+                                  onClick={() => handleStartRefinement(index)}
+                                  className="text-[9px] text-primary hover:underline font-semibold transition animate-fade-in hover:text-primary-foreground"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Bubbly Card */}
+                          <div
+                            className={`p-3.5 rounded-2xl border transition-all duration-300 ${
+                              isUser
+                                ? 'bg-primary/10 border-primary/20 rounded-tr-none text-foreground'
+                                : 'bg-secondary/70 border-border rounded-tl-none text-foreground'
+                            }`}
+                          >
+                            {/* Inline Edit/Refinement Form */}
+                            {!isUser && msg.isEditing ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  value={msg.content}
+                                  onChange={(e) => handleUpdateMessageContent(index, e.target.value)}
+                                  className="w-full bg-input border border-border rounded-lg p-2 text-xs text-foreground focus:outline-none"
+                                  rows={4}
+                                />
+                                <div className="flex justify-end gap-1.5 text-[9px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelRefinement(index)}
+                                    className="px-2 py-1 text-muted hover:text-foreground transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveRefinement(index)}
+                                    className="px-2.5 py-1 bg-primary text-primary-foreground rounded-md font-semibold transition"
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-3 w-full text-left select-text">
+                                {/* Thoughts display */}
+                                {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
+                                  <ModelThoughtsAccordion thoughts={msg.thoughts} isStreaming={chatStreaming && index === chatMessages.length - 1} />
+                                )}
+
+                                {parseMessageArtifacts(msg.content).map((part, pIdx) => {
+                                  if (part.type === 'artifact') {
+                                    return (
+                                      <SafeErrorBoundary key={pIdx}>
+                                        {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
+                                      </SafeErrorBoundary>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <div key={pIdx} className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
+                                      <SafeErrorBoundary>
+                                        <ReactMarkdown
+                                          components={renderMarkdownComponents}
+                                          remarkPlugins={[remarkMath]}
+                                          rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+                                        >
+                                          {part.content || ''}
+                                        </ReactMarkdown>
+                                      </SafeErrorBoundary>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
+            </div>
+
+            {/* Chat error block */}
+            {chatError && (
+              <div className="mx-4 my-2 bg-red-950/20 border border-red-900/35 text-red-300 p-2.5 rounded-lg text-xs flex items-center gap-2 animate-bounce-subtle">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+                <span className="truncate">{chatError}</span>
+              </div>
+            )}
+
+            {/* Chat input controls */}
+            <form onSubmit={handleChatSubmit} className="p-3 bg-secondary/80 border-t border-border flex-shrink-0 space-y-2">
+              
+              {/* Quick Actions Shortcuts Toolbar */}
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1.5">
+                {[
+                  { label: "Practice Quiz", prompt: "Generate a custom quiz based on this binder's documents.", icon: Award, type: "quiz" },
+                  { label: "Recall Cards", prompt: "Generate a set of active recall study flashcards.", icon: Layers, type: "srs" },
+                  { label: "Audio Briefing", prompt: "Create an audio study podcast discussing the core material.", icon: Headphones, type: "podcast" },
+                  { label: "Study Syllabus", prompt: "Design a comprehensive study syllabus covering this topic.", icon: BookMarked, type: "guide" },
+                  { label: "Weakness Finder", prompt: "Scan my notes to find conceptual gaps and weaknesses.", icon: TrendingUp, type: "gaps" }
+                ].map((act) => {
+                  const Icon = act.icon;
+                  return (
+                    <button
+                      key={act.label}
+                      type="button"
+                      onClick={() => {
+                        setChatInput(act.prompt);
+                        setActiveRightTab(act.type as any);
+                        playSoundEffect('click');
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-input/40 border border-border/60 hover:bg-input text-[9.5px] font-bold text-muted hover:text-foreground rounded-lg transition whitespace-nowrap"
+                    >
+                      <Icon className="h-3 w-3 text-primary" />
+                      <span>{act.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="bg-input/40 border border-border rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
+                {/* Paperclip upload button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Upload PDF, text, or code files"
+                  disabled={chatStreaming}
+                  className="p-2 text-muted hover:text-foreground hover:bg-input rounded-lg transition flex items-center justify-center flex-shrink-0"
+                >
+                  <Paperclip className="h-4 w-4 text-primary" />
+                </button>
+                <input
+                  type="file"
+                  multiple
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder={chatStreaming ? 'Zenith AI is thinking...' : 'Ask Zenith AI...'}
+                  disabled={chatStreaming}
+                  className="flex-1 bg-transparent border-0 outline-none focus:outline-none text-xs text-foreground placeholder-muted font-medium px-2.5"
+                />
+
+                <button
+                  type="submit"
+                  disabled={chatStreaming || !chatInput.trim()}
+                  className="p-2 bg-primary text-primary-foreground hover:opacity-95 rounded-xl font-bold transition disabled:opacity-40 shadow flex items-center justify-center flex-shrink-0"
+                >
+                  {chatStreaming ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </form>
+          </main>
+        )}
 
         {/* ======================================================== */}
-        {/* COLUMN 3: RIGHT SIDEBAR (The Oracle - AI Chat Feed)     */}
+        {/* COLUMN 3: RIGHT COLLAPSIBLE WORKSPACE (Source Workbench) */}
         {/* ======================================================== */}
-        <aside className={`inset-y-0 right-0 bg-secondary border-border flex flex-col transition-all duration-300 ease-out z-10 ${
-          mobileTab === 'chat' ? 'flex fixed w-full' : 'hidden lg:flex lg:relative'
+        <aside className={`inset-y-0 right-0 bg-secondary border-border flex flex-col transition-all duration-300 ease-in-out z-10 ${
+          mobileTab === 'workbench' ? 'flex fixed w-full' : 'hidden lg:flex lg:relative'
         } ${
-          rightSidebarOpen ? 'lg:w-[460px] xl:w-[500px] lg:border-l' : 'lg:w-0 lg:overflow-hidden lg:border-l-0'
+          rightSidebarOpen ? 'lg:w-[460px] xl:w-[520px] lg:border-l' : 'lg:w-0 lg:overflow-hidden lg:border-l-0'
         }`}>
-          
-          {/* Header of Oracle Chat */}
-          <div className="p-4 border-b border-border flex justify-between items-center bg-input/10 flex-shrink-0 pr-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4.5 w-4.5 text-primary animate-pulse" />
-              <span className="text-xs font-extrabold text-foreground uppercase tracking-wider">Zenith AI Oracle</span>
+          {/* Workbench Header & Tab Swapper */}
+          <div className="border-b border-border bg-input/10 flex items-center justify-between p-3 flex-shrink-0 gap-2">
+            <div 
+              id="tour-step-tools"
+              className={`flex overflow-x-auto gap-1.5 scrollbar-none p-1 flex-1 ${tourStep === 4 ? 'tour-pulse-active border border-primary p-1 rounded-lg relative z-[9992] bg-secondary' : ''}`}
+            >
+              {[
+                { id: 'viewer', label: 'PDF/Reader', icon: FileText },
+                { id: 'guide', label: 'Syllabus', icon: BookMarked },
+                { id: 'podcast', label: 'Audio Brief', icon: Headphones },
+                { id: 'srs', label: 'Recall Cards', icon: Layers },
+                { id: 'quiz', label: 'Quiz', icon: Award },
+                { id: 'gaps', label: 'Weakness Finder', icon: TrendingUp },
+              ].map(tab => {
+                const Icon = tab.icon;
+                const isActive = activeRightTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setActiveRightTab(tab.id as any); playSoundEffect('click'); }}
+                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-[10.5px] font-bold transition whitespace-nowrap transform active:scale-95 duration-200 ${
+                      isActive
+                        ? 'bg-primary text-primary-foreground shadow-md shadow-primary/10'
+                        : 'text-muted hover:bg-input hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
             
+            {/* Close Sidebar Button */}
             <button
               onClick={() => {
                 if (window.innerWidth < 1024) {
-                  setMobileTab('workbench');
+                  setMobileTab('chat');
                 } else {
                   setRightSidebarOpen(false);
                 }
                 playSoundEffect('click');
               }}
-              className="p-1.5 hover:bg-input border border-border rounded text-muted hover:text-foreground transition"
-              title="Close Chat"
+              className="p-1.5 hover:bg-input border border-border/40 rounded-xl text-muted hover:text-foreground transition transform hover:scale-105 active:scale-95 duration-200 flex-shrink-0"
+              title="Close tools panel"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Active Context Banner */}
-          {selectedBinderId && (
-            <div className="flex-shrink-0 bg-secondary/30 border-b border-border/40 px-4 py-2.5 flex items-center justify-between gap-2.5 backdrop-blur-md">
-              <div className="flex items-center gap-2 text-[10.5px]">
-                <div className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </div>
-                <span className="text-muted truncate max-w-[220px]">
-                  Context: <strong className="text-foreground font-semibold">{binders.find(b => b.id === selectedBinderId)?.name}</strong>
-                </span>
-              </div>
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
-                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-                <span>Zenith Online</span>
-              </div>
-            </div>
-          )}
+          {/* Sandboxed Interactive App Container */}
+          <div className="flex-1 overflow-y-auto flex flex-col min-h-0 bg-input/5">
+            <SandboxedApp appName={activeRightTab}>
+              {/* 1. Document Reader */}
+              {activeRightTab === 'viewer' && (
+                <div className="flex-1 flex flex-col min-h-0 bg-input/5 animate-fade-in">
+                  <div className="p-4 border-b border-border bg-input/10 flex items-center justify-between flex-shrink-0">
+                    <span className="text-xs font-bold text-foreground truncate max-w-[280px] sm:max-w-[400px]">
+                      {selectedDocumentName || 'Source Document'}
+                    </span>
+                    {selectedDocumentText && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedDocumentText);
+                          playSoundEffect('correct');
+                          showToast('Copied document text to clipboard!', 'success');
+                        }}
+                        className="text-[10px] px-3 py-1 bg-input border border-border hover:bg-secondary text-foreground rounded-lg font-semibold transition"
+                      >
+                        Copy All
+                      </button>
+                    )}
+                  </div>
 
-          {/* Chat Feed Messages Area */}
-          <div 
-            className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 scrollbar-none relative animate-all duration-300"
-            onDragEnter={handleDrag}
-            onDragOver={handleDrag}
-            onDragLeave={handleDrag}
-            onDrop={handleDrop}
-          >
-            {dragActive && (
-              <div className="absolute inset-0 z-50 bg-secondary/90 backdrop-blur-md flex flex-col justify-center items-center text-center p-6 border-2 border-dashed border-primary/50 m-2 rounded-2xl animate-fade-in pointer-events-none">
-                <Upload className="h-10 w-10 text-primary mb-3 animate-bounce" />
-                <h3 className="text-xs font-bold text-foreground">Drop Context Files to Ingest</h3>
-                <p className="text-[10px] text-muted max-w-[220px] mt-1">
-                  Ingest PDFs, text documents, or code files directly into your active Study Chat.
-                </p>
-              </div>
-            )}
-
-            {chatMessages.length === 0 ? (
-              <div className="h-full flex flex-col justify-center items-center text-center p-6 gap-3">
-                <Sparkles className="h-8 w-8 text-primary/45 animate-spin" style={{ animationDuration: '3s' }} />
-                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">StudySphere Chat</h3>
-                <p className="text-[11px] text-muted max-w-[250px] leading-relaxed">
-                  Ask Zenith AI questions. Upload documents or click any action below to trigger analysis.
-                </p>
-                
-                <div className="mt-4 grid grid-cols-1 gap-2 w-full max-w-[280px]">
-                  {[
-                    { label: "Summarize concepts", text: "Summarize the key core concepts of this binder in a clear markdown bullet list." },
-                    { label: "Draft review syllabus", text: "Suggest a 5-day structured study syllabus based on these notes." },
-                    { label: "Find conceptual gaps", text: "Scan my notes to find conceptual gaps and weaknesses." }
-                  ].map((chip, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        setChatInput(chip.text);
-                        playSoundEffect('click');
-                      }}
-                      className="p-3 bg-input/40 border border-border hover:border-primary/40 hover:bg-secondary rounded-xl text-left text-[11px] text-muted hover:text-foreground transition flex flex-col gap-0.5 shadow-sm"
-                    >
-                      <span className="font-semibold text-foreground">{chip.label}</span>
-                      <span className="text-[9.5px] text-muted-foreground leading-tight truncate">{chip.text}</span>
-                    </button>
-                  ))}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 font-sans text-sm text-foreground leading-relaxed whitespace-pre-wrap selection:bg-primary/20 select-text">
+                    {documentLoading ? (
+                      <div className="flex flex-col justify-center items-center py-32 gap-3 text-muted">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                        <span className="text-xs uppercase tracking-widest font-semibold animate-pulse">Extracting text layout...</span>
+                      </div>
+                    ) : selectedDocumentText ? (
+                      <div className="p-4 bg-input border border-border rounded-2xl font-mono text-xs max-h-[70vh] overflow-y-auto leading-normal">
+                        {selectedDocumentText}
+                      </div>
+                    ) : (
+                      <div className="text-center py-28 text-muted space-y-3 px-6 max-w-md mx-auto animate-fade-in">
+                        <FileText className="h-10 w-10 text-muted/50 mx-auto animate-pulse" />
+                        <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">No Document Selected</h4>
+                        <p className="text-xs leading-normal">Select the preview icon next to any document in the sidebar to review its text chunks.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-4 py-2">
-                {chatMessages.map((msg, index) => {
-                  const isUser = msg.role === 'user';
-                  const isSystem = msg.role === 'system';
-                  
-                  if (isSystem) {
-                    return (
-                      <div key={index} className="flex justify-center my-2 animate-fade-in-up">
-                        <div className="bg-primary/5 border border-primary/10 rounded-xl px-3 py-1.5 text-[10px] text-primary flex items-center gap-1.5 shadow-sm max-w-[90%] text-center">
-                          <Info className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span>{msg.content}</span>
+              )}
+
+              {/* 2. Study Guide / Syllabus */}
+              {activeRightTab === 'guide' && (
+                <div className="p-6 space-y-5 animate-fade-in max-w-4xl mx-auto w-full">
+                  <div className="flex justify-between items-center border-b border-border pb-3">
+                    <span className="text-xs font-bold text-foreground">Binder Study Syllabus</span>
+                    {selectedBinderId && documents.length > 0 && (
+                      <button
+                        onClick={handleGenerateStudyGuide}
+                        disabled={sourceGuideLoading}
+                        className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5 transform hover:scale-102 active:scale-98"
+                      >
+                        {sourceGuideLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        <span>Generate Syllabus</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!selectedBinderId ? (
+                    <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl animate-fade-in">
+                      <span className="text-xs text-muted">Select a Document Binder in the sidebar to compile syllabus.</span>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl space-y-2 animate-fade-in">
+                      <FileText className="h-8 w-8 text-muted mx-auto" />
+                      <p className="text-xs text-muted">No documents in binder. Upload files to generate a syllabus.</p>
+                    </div>
+                  ) : sourceGuideLoading ? (
+                    <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl animate-pulse">
+                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                      <span className="text-xs text-foreground font-semibold">Analyzing binder files...</span>
+                      <span className="text-[10px] text-muted text-center max-w-[280px]">Structuring core review guides, FAQS, glossaries and active recall landmarks</span>
+                    </div>
+                  ) : sourceGuideText ? (
+                    <div className="space-y-4 animate-fade-in-up">
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(sourceGuideText);
+                            playSoundEffect('correct');
+                            showToast('Copied study syllabus to clipboard!', 'success');
+                          }}
+                          className="px-3 py-1.5 bg-input border border-border hover:bg-secondary text-xs text-foreground rounded-lg flex items-center gap-1.5 font-semibold transition"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>Copy Markdown</span>
+                        </button>
+                      </div>
+                      <div className="glass-panel p-6 rounded-2xl shadow-md academic-prose text-sm max-h-[70vh] overflow-y-auto bg-input/40 border border-border select-text">
+                        <SafeErrorBoundary>
+                          <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                            {sourceGuideText}
+                          </ReactMarkdown>
+                        </SafeErrorBoundary>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto animate-fade-in">
+                      <BookMarked className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
+                      <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Generate Syllabus</h4>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Generate core concept reviews, FAQs, and terminology glossaries from all files in this binder.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. AI Podcast / Audio Review */}
+              {activeRightTab === 'podcast' && (
+                <div className="p-6 space-y-5 animate-fade-in max-w-2xl mx-auto w-full">
+                  <div className="flex justify-between items-center border-b border-border pb-3">
+                    <span className="text-xs font-bold text-foreground">AI Audio Briefing</span>
+                    {selectedBinderId && documents.length > 0 && (
+                      <button
+                        onClick={handleGeneratePodcast}
+                        disabled={podcastLoading}
+                        className="px-3 py-1.5 bg-primary text-primary-foreground hover:opacity-90 rounded-lg text-xs font-bold disabled:bg-secondary disabled:text-muted transition flex items-center gap-1.5 transform hover:scale-102 active:scale-98"
+                      >
+                        {podcastLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        <span>Compile Briefing</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!selectedBinderId ? (
+                    <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl animate-fade-in">
+                      <span className="text-xs text-muted">Select a Document Binder to generate podcast reviews.</span>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="text-center py-16 bg-secondary/50 border border-border rounded-2xl animate-fade-in">
+                      <span className="text-xs text-muted">No documents found in binder.</span>
+                    </div>
+                  ) : podcastLoading ? (
+                    <div className="flex flex-col justify-center items-center py-20 gap-3 bg-secondary/35 border border-border rounded-2xl animate-pulse">
+                      <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                      <span className="text-xs text-foreground font-semibold">Compiling briefing audio script...</span>
+                      <span className="text-[10px] text-muted">Zenith dialogue engine is preparing discussion channels</span>
+                    </div>
+                  ) : podcastTurns.length > 0 ? (
+                    <div className="space-y-5 animate-fade-in-up">
+                      {/* Pulsing Visualizer Media Widget */}
+                      <div className="flex flex-col items-center justify-center p-6 bg-secondary border border-border rounded-2xl space-y-4 shadow-lg relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-accent/5 pointer-events-none" />
+                        
+                        <div className="relative w-32 h-32 bg-input border border-border rounded-full flex items-center justify-center shadow-inner">
+                          <div className={`w-28 h-28 border-2 border-dashed border-primary/20 rounded-full flex items-center justify-center ${podcastPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '12s' }}>
+                            <div className="w-12 h-12 bg-secondary border border-border rounded-full"></div>
+                          </div>
+                          {podcastPlaying && (
+                            <div className="absolute flex items-center gap-1 h-4">
+                              <span className="w-0.5 h-full bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                              <span className="w-0.5 h-3/4 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+                              <span className="w-0.5 h-1/2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-center space-y-1">
+                          <h4 className="text-xs font-bold text-foreground">Interactive Audio Briefing</h4>
+                          <p className="text-[10px] text-muted">Alex & Taylor Co-hosts</p>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          {podcastPlaying ? (
+                            <button
+                              onClick={pausePodcastPlayback}
+                              className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
+                            >
+                              <Pause className="h-4.5 w-4.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={startPodcastPlayback}
+                              className="p-3 bg-primary text-primary-foreground rounded-full hover:opacity-90 transition transform active:scale-95 shadow-md shadow-primary/10"
+                            >
+                              <Play className="h-4.5 w-4.5 fill-current" />
+                            </button>
+                          )}
+                          <select
+                            value={podcastSpeed}
+                            onChange={(e) => {
+                              setPodcastSpeed(Number(e.target.value));
+                              if (podcastPlaying) speakDialogue(activePodcastIndex);
+                            }}
+                            className="bg-input border border-border rounded-xl px-2.5 py-1 text-xs text-foreground focus:outline-none transition hover:border-muted-foreground/30"
+                          >
+                            <option value={0.85}>0.85x Speed</option>
+                            <option value={1}>1.0x Speed</option>
+                            <option value={1.2}>1.2x Speed</option>
+                            <option value={1.5}>1.5x Speed</option>
+                          </select>
                         </div>
                       </div>
-                    );
-                  }
 
-                  return (
-                    <div
-                      key={index}
-                      className={`flex gap-2.5 text-xs leading-relaxed animate-fade-in-up ${
-                        isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'
-                      } max-w-[92%]`}
-                    >
-                      {/* Avatar */}
-                      <div className="flex-shrink-0">
-                        {isUser ? (
-                          user?.picture ? (
-                            <img src={user.picture} alt="User" className="w-8 h-8 rounded-full border border-primary/20 shadow-sm" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-primary/25 border border-primary/30 flex items-center justify-center font-bold text-primary shadow-sm text-xs">
-                              {user?.name ? user.name[0].toUpperCase() : 'U'}
+                      {/* Scrolling Script turns */}
+                      <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-2 select-text">
+                        {podcastTurns.map((turn, idx) => {
+                          const isActive = idx === activePodcastIndex;
+                          return (
+                            <div
+                              key={idx}
+                              id={`podcast-turn-${idx}`}
+                              onClick={() => {
+                                speakDialogue(idx);
+                                if (!podcastPlaying) setPodcastPlaying(true);
+                              }}
+                              className={`p-3.5 border rounded-xl cursor-pointer text-xs transition-all duration-300 ${
+                                isActive
+                                  ? 'bg-primary/10 border-primary/30 shadow-md scale-[1.01]'
+                                  : 'bg-input/40 border-border hover:border-muted-foreground/20 text-muted hover:text-foreground'
+                              }`}
+                            >
+                              <span className={`font-bold uppercase tracking-wider text-[9px] block mb-1 ${turn.speaker === 'Alex' ? 'text-primary' : 'text-accent'}`}>
+                                {turn.speaker}
+                              </span>
+                              <p className="leading-relaxed font-sans">{turn.text}</p>
                             </div>
-                          )
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-20 bg-secondary/50 border border-border rounded-2xl space-y-3 max-w-sm mx-auto animate-fade-in">
+                      <SpeakerIcon className="h-10 w-10 text-primary/45 mx-auto animate-pulse" />
+                      <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Audio podcast Briefing</h4>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Generate a full text-to-speech discussion overview of your binder files.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 4. Active Recall Cards (SRS) */}
+              {activeRightTab === 'srs' && (
+                <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
+                  <div className="border-b border-border pb-3 mb-4 flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground">Recall Flashcards Deck</span>
+                    <span className="text-[10px] font-bold bg-input border border-border px-3 py-1 rounded-lg text-muted animate-pulse">
+                      {dueCardsCount} cards due
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    <FlashcardSRS soundOn={soundOn} binderId={selectedBinderId} />
+                  </div>
+                </div>
+              )}
+
+              {/* 5. Practice Exam / Quiz */}
+              {activeRightTab === 'quiz' && (
+                <div className="p-6 flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full">
+                  <div className="border-b border-border pb-3 mb-4">
+                    <span className="text-xs font-bold text-foreground">Practice Mock Exams</span>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0">
+                    <MockExamEngine onGradeCompleted={handleExamGradeCompleted} />
+                  </div>
+                </div>
+              )}
+
+              {/* 6. Weakness Finder (Stats/Gaps) */}
+              {activeRightTab === 'gaps' && (
+                <div className="flex-1 flex flex-col min-h-0 animate-fade-in max-w-4xl mx-auto w-full p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+                    
+                    {/* Section 1: History Log */}
+                    <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
+                      <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0">
+                        <History className="h-4 w-4 text-primary animate-pulse" />
+                        <span className="text-xs font-bold text-foreground uppercase tracking-wider">Concept Query History</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-2 select-text">
+                        {studyHistory.length === 0 ? (
+                          <div className="text-center py-10 text-xs text-muted">No query history found. Try asking a question!</div>
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center font-extrabold text-primary-foreground shadow shadow-primary/20 text-xs select-none">
-                            Z
+                          studyHistory.map(item => (
+                            <div
+                              key={item.id}
+                              onClick={() => handleLoadHistoryItem(item)}
+                              className="p-3 border border-border bg-input/30 hover:border-primary/40 hover:bg-input cursor-pointer transition text-left space-y-1.5 rounded-xl hover:scale-101 duration-200 transform"
+                            >
+                              <p className="text-xs font-semibold text-foreground truncate">{item.query}</p>
+                              <div className="flex justify-between items-center text-[10px] text-muted">
+                                <span>Response loaded</span>
+                                <span>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Real-time Study Weakness Finder */}
+                    <div className="flex flex-col bg-secondary/20 border border-border rounded-2xl overflow-hidden shadow-inner">
+                      <div className="p-4 border-b border-border bg-input/10 flex items-center gap-2 flex-shrink-0 justify-between">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-accent" />
+                          <span className="text-xs font-bold text-foreground uppercase tracking-wider">Weakness Scanner</span>
+                        </div>
+                        <button
+                          onClick={handleRunGapAnalysis}
+                          disabled={documentLoading || !selectedBinderId}
+                          className="px-3 py-1 bg-primary text-primary-foreground hover:opacity-90 rounded-md text-[10.5px] font-bold disabled:opacity-50 transition transform active:scale-95"
+                        >
+                          Scan
+                        </button>
+                      </div>
+                      
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3 select-text">
+                        {gapAnalysis ? (
+                          <div className="space-y-4">
+                            <div className="bg-input border border-border rounded-xl p-3.5 space-y-2 shadow-inner">
+                              <div className="flex items-center gap-1.5 text-accent text-xs font-bold">
+                                <AlertTriangle className="h-4 w-4" />
+                                <span>WEAKNESSES DETECTED</span>
+                              </div>
+                              <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none academic-prose">
+                                <ReactMarkdown components={renderMarkdownComponents} remarkPlugins={[remarkMath]} rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}>
+                                  {gapAnalysis}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+
+                            {suggestedPathways.length > 0 && (
+                              <div className="space-y-2 animate-fade-in-up">
+                                <span className="text-[10px] font-bold text-muted uppercase tracking-widest pl-1">Suggested Pathways</span>
+                                <div className="grid grid-cols-1 gap-2">
+                                  {suggestedPathways.map((path, idx) => (
+                                    <div key={idx} className="flex gap-2 p-2.5 bg-input border border-border rounded-xl text-xs text-foreground font-semibold items-start hover:border-emerald-500/20 transition duration-200">
+                                      <Check className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                      <span>{path}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="h-full flex flex-col justify-center items-center text-center p-4 gap-2 py-10">
+                            <TrendingUp className="h-8 w-8 text-muted/50" />
+                            <span className="text-xs font-bold text-foreground">No weaknesses scanned yet</span>
+                            <p className="text-xs text-muted leading-relaxed max-w-[200px]">
+                              Take a Practice Mock Exam or run a Scan to identify conceptual gaps.
+                            </p>
                           </div>
                         )}
                       </div>
-
-                      {/* Message Bubble Column */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className={`flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                          <span className="text-[10px] font-bold text-foreground">
-                            {isUser ? 'You' : 'Zenith AI'}
-                          </span>
-                          {!isUser && (
-                            <span className="text-[8.5px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded-full flex items-center gap-0.5 shadow-glow-sm select-none">
-                              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                              99.4% trust
-                            </span>
-                          )}
-                          {!isUser && msg.content && (
-                            <div className="flex items-center gap-1.5 ml-auto">
-                              <button
-                                onClick={() => handleOpenInlineCardModal(msg.content)}
-                                className="text-[9px] text-accent hover:underline font-semibold transition"
-                              >
-                                Create Card
-                              </button>
-                              <span className="text-muted/40 text-[9px]">•</span>
-                              <button
-                                onClick={() => handleStartRefinement(index)}
-                                className="text-[9px] text-primary hover:underline font-semibold transition animate-fade-in"
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Bubbly Card */}
-                        <div
-                          className={`p-3.5 rounded-2xl border transition-all duration-300 ${
-                            isUser
-                              ? 'bg-primary/10 border-primary/20 rounded-tr-none text-foreground'
-                              : 'bg-secondary/70 border-border rounded-tl-none text-foreground'
-                          }`}
-                        >
-                          {/* Inline Edit/Refinement Form */}
-                          {!isUser && msg.isEditing ? (
-                            <div className="space-y-2">
-                              <textarea
-                                value={msg.content}
-                                onChange={(e) => handleUpdateMessageContent(index, e.target.value)}
-                                className="w-full bg-input border border-border rounded-lg p-2 text-xs text-foreground focus:outline-none"
-                                rows={4}
-                              />
-                              <div className="flex justify-end gap-1.5 text-[9px]">
-                                <button
-                                  type="button"
-                                  onClick={() => handleCancelRefinement(index)}
-                                  className="px-2 py-1 text-muted hover:text-foreground transition"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveRefinement(index)}
-                                  className="px-2.5 py-1 bg-primary text-primary-foreground rounded-md font-semibold transition"
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-3 w-full text-left select-text">
-                              {/* Thoughts display */}
-                              {!isUser && msg.thoughts && msg.thoughts.length > 0 && (
-                                <ModelThoughtsAccordion thoughts={msg.thoughts} isStreaming={chatStreaming && index === chatMessages.length - 1} />
-                              )}
-
-                              {parseMessageArtifacts(msg.content).map((part, pIdx) => {
-                                if (part.type === 'artifact') {
-                                  return (
-                                    <SafeErrorBoundary key={pIdx}>
-                                      {renderChatArtifact(part.artifactType || '', part.binderId, part.questionCount)}
-                                    </SafeErrorBoundary>
-                                  );
-                                }
-                                
-                                return (
-                                  <div key={pIdx} className="prose prose-invert prose-xs max-w-none chat-prose overflow-x-auto leading-relaxed">
-                                    <SafeErrorBoundary>
-                                      <ReactMarkdown
-                                        components={renderMarkdownComponents}
-                                        remarkPlugins={[remarkMath]}
-                                        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-                                      >
-                                        {part.content || ''}
-                                      </ReactMarkdown>
-                                    </SafeErrorBoundary>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </div>
-                  );
-                })}
-                <div ref={chatEndRef} />
-              </div>
-            )}
+
+                  </div>
+                </div>
+              )}
+            </SandboxedApp>
           </div>
-
-          {/* Chat error block */}
-          {chatError && (
-            <div className="mx-4 my-2 bg-red-950/20 border border-red-900/35 text-red-300 p-2.5 rounded-lg text-xs flex items-center gap-2">
-              <AlertTriangle className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
-              <span className="truncate">{chatError}</span>
-            </div>
-          )}
-
-          {/* Chat input controls */}
-          <form onSubmit={handleChatSubmit} className="p-3 bg-secondary/80 border-t border-border flex-shrink-0 space-y-2">
-            
-            {/* Quick Actions Shortcuts Toolbar */}
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1.5">
-              {[
-                { label: "Practice Quiz", prompt: "Generate a custom quiz based on this binder's documents.", icon: Award, type: "quiz" },
-                { label: "Recall Cards", prompt: "Generate a set of active recall study flashcards.", icon: Layers, type: "srs" },
-                { label: "Audio Briefing", prompt: "Create an audio study podcast discussing the core material.", icon: Headphones, type: "podcast" },
-                { label: "Study Syllabus", prompt: "Design a comprehensive study syllabus covering this topic.", icon: BookMarked, type: "guide" },
-                { label: "Weakness Finder", prompt: "Scan my notes to find conceptual gaps and weaknesses.", icon: TrendingUp, type: "gaps" }
-              ].map((act) => {
-                const Icon = act.icon;
-                return (
-                  <button
-                    key={act.label}
-                    type="button"
-                    onClick={() => {
-                      setChatInput(act.prompt);
-                      setActiveRightTab(act.type as any);
-                      playSoundEffect('click');
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-input/40 border border-border/60 hover:bg-input text-[9.5px] font-bold text-muted hover:text-foreground rounded-lg transition whitespace-nowrap"
-                  >
-                    <Icon className="h-3 w-3 text-primary" />
-                    <span>{act.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="bg-input/40 border border-border rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
-              {/* Paperclip upload button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="Upload PDF, text, or code files"
-                disabled={chatStreaming}
-                className="p-2 text-muted hover:text-foreground hover:bg-input rounded-lg transition flex items-center justify-center flex-shrink-0"
-              >
-                <Paperclip className="h-4 w-4 text-primary" />
-              </button>
-              <input
-                type="file"
-                multiple
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder={chatStreaming ? 'Zenith AI is thinking...' : 'Ask Zenith AI...'}
-                disabled={chatStreaming}
-                className="flex-1 bg-transparent border-0 outline-none focus:outline-none text-xs text-foreground placeholder-muted font-medium px-2.5"
-              />
-
-              <button
-                type="submit"
-                disabled={chatStreaming || !chatInput.trim()}
-                className="p-2 bg-primary text-primary-foreground hover:opacity-95 rounded-xl font-bold transition disabled:opacity-40 shadow flex items-center justify-center flex-shrink-0"
-              >
-                {chatStreaming ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Send className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </div>
-          </form>
         </aside>
 
         {/* Right Sidebar overlay backdrop on mobile screens */}
@@ -4980,9 +4684,11 @@ export default function App() {
                 if (tab.id === 'chat') {
                   setRightSidebarOpen(false);
                   setActiveTab('chat');
+                  setMobileTab('chat');
                 } else {
                   setActiveRightTab(tab.id as any);
                   setRightSidebarOpen(true);
+                  setMobileTab('workbench');
                 }
                 playSoundEffect('click');
               }}
